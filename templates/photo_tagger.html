@@ -441,6 +441,14 @@
   #persp-apply:disabled { background: #555; cursor: default; }
   #persp-cancel { background: #444; color: #fff; }
   #persp-btn.active { background: #2e7d32; color: #fff; }
+  /* Belt and braces: even without the controls attribute, WebKit can paint an
+     overlay layer over the frame. Nothing of the browser's own chrome shows. */
+  #main-video::-webkit-media-controls,
+  #main-video::-webkit-media-controls-enclosure,
+  #main-video::-webkit-media-controls-overlay-enclosure,
+  #main-video::-webkit-media-controls-panel,
+  #main-video::-webkit-media-controls-start-playback-button { display: none !important; }
+
   #main-video {
     /* Height is held short of the viewport so the native controls stay clear
        of the bottom bar, which overlays the photo area. */
@@ -452,7 +460,32 @@
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     background: #000;
     outline: none;
+    cursor: pointer;
   }
+
+  /* Our own transport, drawn only where we put it — the native one dimmed the
+     picture behind a scrim for its first few seconds. */
+  #video-bar {
+    position: absolute;
+    bottom: 96px; left: 50%; transform: translateX(-50%);
+    z-index: 6;
+    display: none;
+    align-items: center; gap: 10px;
+    background: rgba(20,20,22,.92); color: #fff;
+    padding: 8px 14px; border-radius: 10px;
+    font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    white-space: nowrap;
+    max-width: min(860px, 94vw);
+  }
+  #video-bar.open { display: flex; }
+  #video-bar button { font-size: 13px; padding: 5px 12px; border-radius: 7px; border: 0; cursor: pointer; background: #444; color: #fff; }
+  #video-bar button:hover { background: #555; }
+  #video-play { min-width: 34px; }
+  #video-save-frame { background: #2e7d32; }
+  #video-save-frame:hover { background: #38913d; }
+  #video-save-frame:disabled { background: #555; cursor: default; }
+  #video-scrub { width: 380px; max-width: 44vw; accent-color: #2e7d32; }
+  #video-time { font-variant-numeric: tabular-nums; min-width: 86px; }
 
   #frame-preview {
     position: absolute;
@@ -745,9 +778,10 @@
     <button class="top-btn type-btn active" id="type-btn-heic" onclick="toggleTypeFilter('heic')">HEIC</button>
     <button class="top-btn type-btn active" id="type-btn-jpg" onclick="toggleTypeFilter('jpg')">JPG</button>
     <button class="top-btn type-btn active" id="type-btn-png" onclick="toggleTypeFilter('png')">PNG</button>
-    <button class="top-btn type-btn active" id="type-btn-mp4" onclick="toggleTypeFilter('mp4')">MP4</button>
+    <button class="top-btn type-btn active" id="type-btn-video" onclick="toggleTypeFilter('video')">VIDEO</button>
   </div>
   <button class="top-btn" id="tagged-only-btn" onclick="toggleTaggedOnly()" title="Show only photos with at least one tag (Me/Blog/Hidden)">Tagged only</button>
+  <button class="top-btn" id="videos-only-btn" onclick="toggleVideosOnly()" title="Show only video recordings (MP4/MOV), skipping every still">Videos only</button>
   <select id="sort-select" onchange="changeSortMode(this.value)" title="Photo order">
     <option value="date">Sort: Date</option>
     <option value="filename">Sort: Filename</option>
@@ -790,7 +824,15 @@
     <p>Click <strong>Browse…</strong> or paste a folder path above.</p>
   </div>
   <img id="main-photo" src="" alt="" onload="onPhotoLoaded()">
-  <video id="main-video" controls playsinline preload="metadata"></video>
+  <video id="main-video" playsinline preload="metadata"></video>
+  <div id="video-bar">
+    <button id="video-play" onclick="videoTogglePlay()" title="Play / pause (Space)">&#9654;</button>
+    <input id="video-scrub" type="range" min="0" max="1000" value="0" step="1">
+    <span id="video-time">0:00 / 0:00</span>
+    <button id="video-mute" onclick="videoToggleMute()" title="Mute / unmute">&#128266;</button>
+    <button id="video-full" onclick="videoFullscreen()" title="Fullscreen">&#9974;</button>
+    <button id="video-save-frame" onclick="saveVideoFrame()" title="Save the frame on screen as a photo in this folder">&#10003; Save frame</button>
+  </div>
   <img id="frame-preview" style="display:none" alt="">
   <div id="frame-bar" style="display:none">
     <button id="frame-play" onclick="frameTogglePlay()" title="Play / pause (Space)">&#9654;</button>
@@ -882,14 +924,15 @@
   // The folder browser doubles as the destination picker for "Move to…":
   // browserMode decides what its footer button does with the browsed folder.
   let browserMode = 'open', movePhotoName = '', currentFolder = '';
-  let typeFilter = { heic: true, jpg: true, png: true, mp4: true };
-  const PHOTO_TYPES = ['heic', 'jpg', 'png', 'mp4'];
+  let typeFilter = { heic: true, jpg: true, png: true, video: true };
+  const PHOTO_TYPES = ['heic', 'jpg', 'png', 'video'];
+  let videosOnly = false;
 
   function extCategory(filename) {
     const ext = (filename.split('.').pop() || '').toLowerCase();
     if (ext === 'jpg' || ext === 'jpeg') return 'jpg';
     if (ext === 'png') return 'png';
-    if (ext === 'mp4') return 'mp4';
+    if (ext === 'mp4' || ext === 'mov') return 'video';
     return 'heic';
   }
 
@@ -1130,6 +1173,14 @@
     applyFilter(false);
   }
 
+  // One click to review just the clips — the stills stay out of the way until
+  // it's switched back off.
+  function toggleVideosOnly() {
+    videosOnly = !videosOnly;
+    document.getElementById('videos-only-btn').classList.toggle('active', videosOnly);
+    applyFilter(false);
+  }
+
   function toggleTypeFilter(type) {
     typeFilter[type] = !typeFilter[type];
     document.getElementById(`type-btn-${type}`).classList.toggle('active', typeFilter[type]);
@@ -1142,7 +1193,9 @@
   function applyFilter(keepPosition) {
     const currentFilename = (keepPosition && photos.length) ? photos[idx].filename : null;
     photos = allPhotos.filter(p =>
-      (!taggedOnly || isTagged(p)) && typeFilter[extCategory(p.filename)]
+      (!taggedOnly || isTagged(p)) &&
+      (!videosOnly || isVideoItem(p)) &&
+      typeFilter[extCategory(p.filename)]
     );
     updateStats();
     updateNotesBadge();
@@ -1152,6 +1205,8 @@
       const noTypesSelected = PHOTO_TYPES.every(t => !typeFilter[t]);
       document.getElementById('empty-state').innerHTML = noTypesSelected
         ? '<h2>No photo types selected</h2><p>Enable at least one format above.</p>'
+        : videosOnly
+          ? '<h2>No videos in this folder</h2><p>Live Photo clips don\'t count — turn off "Videos only" to see the stills.</p>'
         : taggedOnly
           ? '<h2>No tagged photos yet</h2><p>Tag some photos, or turn off "Tagged only".</p>'
           : '<h2>No photos left</h2><p>All photos have been removed.</p>';
@@ -1174,7 +1229,9 @@
     let j = photos.findIndex(p => p.filename === filename);
     if (j === -1) {
       taggedOnly = false;
+      videosOnly = false;
       document.getElementById('tagged-only-btn').classList.remove('active');
+      document.getElementById('videos-only-btn').classList.remove('active');
       PHOTO_TYPES.forEach(t => {
         typeFilter[t] = true;
         document.getElementById(`type-btn-${t}`).classList.add('active');
@@ -1659,6 +1716,7 @@
     // Never leave a clip playing behind the next item.
     vidEl.pause();
     vidEl.style.display = isVideo ? 'block' : 'none';
+    videoBarSync(isVideo);
     // Tools that only make sense on a still.
     ['copy-btn', 'crop-btn', 'persp-btn'].forEach(id => {
       document.getElementById(id).style.display = isVideo ? 'none' : '';
@@ -1685,7 +1743,10 @@
     }
     document.getElementById('counter').textContent = `${idx + 1} / ${photos.length}`;
     document.getElementById('goto-input').max = photos.length;
-    document.getElementById('filename-label').textContent = photo.filename;
+    const mins = photo.duration == null ? null :
+      `${Math.floor(photo.duration / 60)}:${String(Math.round(photo.duration % 60)).padStart(2, '0')}`;
+    document.getElementById('filename-label').textContent =
+      photo.filename + (mins ? `  ·  ${mins}` : '');
     document.getElementById('date-label').textContent = photo.date || '';
     document.getElementById('frame-btn').style.display = photo.has_mov ? '' : 'none';
     const gpsLink    = document.getElementById('gps-link');
@@ -1946,6 +2007,88 @@
     showPhoto(idx);
   }
 
+  // ─── VIDEO TRANSPORT ──────────────────────────────────────────
+  // The browser's built-in controls put a dark scrim over the picture while
+  // they're on screen, so a clip opened dim and only brightened once they
+  // auto-hid. These draw nothing over the video at all.
+  (function () {
+    const vid   = document.getElementById('main-video');
+    const bar   = document.getElementById('video-bar');
+    const play  = document.getElementById('video-play');
+    const scrub = document.getElementById('video-scrub');
+    const label = document.getElementById('video-time');
+    const mute  = document.getElementById('video-mute');
+    let seeking = false;
+
+    const clock = (t) => `${Math.floor((t || 0) / 60)}:${String(Math.floor((t || 0) % 60)).padStart(2, '0')}`;
+
+    function paint() {
+      const d = vid.duration;
+      label.textContent = `${clock(vid.currentTime)} / ${clock(isFinite(d) ? d : 0)}`;
+      if (!seeking && isFinite(d) && d > 0) scrub.value = Math.round((vid.currentTime / d) * 1000);
+    }
+
+    window.videoTogglePlay = function () {
+      if (!vid.getAttribute('src')) return;
+      if (vid.paused) vid.play(); else vid.pause();
+    };
+    window.videoToggleMute = function () {
+      vid.muted = !vid.muted;
+      mute.innerHTML = vid.muted ? '&#128263;' : '&#128266;';
+    };
+    window.videoFullscreen = function () {
+      if (vid.requestFullscreen) vid.requestFullscreen();
+      else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();   // iOS/Safari
+    };
+    // Resets the transport for whatever clip is now on screen (or hides it).
+    window.videoBarSync = function (on) {
+      bar.classList.toggle('open', !!on);
+      play.innerHTML = '&#9654;';
+      scrub.value = 0;
+      label.textContent = '0:00 / 0:00';
+    };
+
+    // Grabs whatever is on screen right now. The server re-decodes that exact
+    // moment at full resolution rather than scaling up what the player shows.
+    window.saveVideoFrame = async function () {
+      if (!currentIsVideo()) return;
+      const btn = document.getElementById('video-save-frame');
+      const filename = photos[idx].filename, time = vid.currentTime || 0;
+      vid.pause();
+      btn.disabled = true;
+      showToast('Saving frame…', 0);
+      try {
+        const res = await fetch(`${API}/video-frame`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, time })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Frame save failed');
+        showToast('Saved ' + data.filename, 1500);
+        await fetchPhotos();
+        showPhotoByFilename(data.filename);
+      } catch (err) {
+        showToast('Frame save failed: ' + err.message, 2500, true);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    vid.addEventListener('loadedmetadata', paint);
+    vid.addEventListener('timeupdate', paint);
+    vid.addEventListener('play',  () => { play.innerHTML = '&#10073;&#10073;'; });
+    vid.addEventListener('pause', () => { play.innerHTML = '&#9654;'; });
+    vid.addEventListener('ended', () => { play.innerHTML = '&#9654;'; });
+    vid.addEventListener('click', () => window.videoTogglePlay());
+    scrub.addEventListener('pointerdown', () => { seeking = true; });
+    scrub.addEventListener('input', () => {
+      const d = vid.duration;
+      if (isFinite(d) && d > 0) { vid.currentTime = (scrub.value / 1000) * d; paint(); }
+    });
+    scrub.addEventListener('change', () => { seeking = false; });
+  })();
+
   // ─── ROTATE (save a rotated copy, like Crop) ──────────────────
   async function rotatePhoto(degrees) {
     if (!photos.length || currentIsVideo()) return;
@@ -2063,10 +2206,7 @@
       case 'ArrowLeft':  e.preventDefault(); navigate(-1); break;
       case 'ArrowRight': e.preventDefault(); navigate(1);  break;
       case ' ':
-        if (currentIsVideo()) {
-          e.preventDefault();
-          if (vidEl.paused) vidEl.play(); else vidEl.pause();
-        }
+        if (currentIsVideo()) { e.preventDefault(); videoTogglePlay(); }
         break;
       case '1': toggleTag('me');     break;
       case '2': toggleTag('blog');   break;

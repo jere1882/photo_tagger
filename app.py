@@ -135,9 +135,21 @@ def _pt_persist_folder(folder):
 # are listed and played alongside the stills (they can be tagged, noted, moved
 # and deleted like any photo; crop/straighten/copy-as-PNG don't apply).
 PT_MIME = {'.heic': 'image/heic', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-           '.png': 'image/png', '.mp4': 'video/mp4'}
-PT_VIDEO_EXTS = {'.mp4'}
+           '.png': 'image/png', '.mp4': 'video/mp4', '.mov': 'video/quicktime'}
+PT_VIDEO_EXTS = {'.mp4', '.mov'}
 PT_PHOTO_EXTS = set(PT_MIME)   # everything the tagger lists, stills and clips alike
+# Folder-browser badges count stills and MP4s. .MOV is left out on purpose: all
+# but a few hundred of them are Live Photo sidecars, which would swamp the count.
+PT_BROWSE_EXTS = PT_PHOTO_EXTS - {'.mov'}
+# Shortest clip worth listing. 0 lists every genuine recording, including the
+# sub-second accidental taps; raise it to hide those.
+PT_MIN_VIDEO_SECONDS = 0.0
+# A .MOV sitting next to a still of the same name is taken to be that photo's
+# Live Photo clip without opening it — true for 11,457 of this library's 11,461
+# such pairs. Above this size that assumption is checked against the file's
+# metadata instead, so a real recording that happens to share a name with a
+# photo still gets listed (the largest measured Live Photo clip was 23.8MB).
+PT_SIDECAR_MAX_BYTES = 25 * 1024 * 1024
 
 PT_FOLDER = _pt_load_last_folder()
 _geocache: dict = {}   # (rounded lat, lon) → {place, landmark}
@@ -228,12 +240,69 @@ def _mp4_creation_time(filepath):
     return None
 
 
+_pt_mov_cache = {}   # (path, mtime_ns, size) -> {'duration', 'live_clip'}
+
+
+def _mov_info(filepath):
+    """{'duration': seconds|None, 'live_clip': bool} for a QuickTime/MP4 file.
+
+    'live_clip' means the file is the motion half of a Live Photo rather than a
+    recording: Apple marks those with a com.apple.quicktime.still-image-time
+    metadata entry (the frame that is "the photo"), which no ordinary recording
+    carries. That's the real distinction — duration isn't, since plenty of
+    deliberate recordings are shorter than a Live Photo's ~3s.
+
+    iPhones write 'moov' at the end of the file, so the tail is read first.
+    Results are cached per file identity; only clips the caller can't rule out
+    more cheaply ever reach this.
+    """
+    try:
+        st = filepath.stat()
+    except OSError:
+        return {'duration': None, 'live_clip': False}
+    key = (str(filepath), st.st_mtime_ns, st.st_size)
+    cached = _pt_mov_cache.get(key)
+    if cached is not None:
+        return cached
+    blob = b''
+    try:
+        with open(filepath, 'rb') as f:
+            if st.st_size > (1 << 20):
+                f.seek(max(0, st.st_size - (1 << 20)))
+                blob = f.read()
+            if b'moov' not in blob:
+                f.seek(0)
+                blob = f.read(min(st.st_size, 1 << 20)) + blob
+    except OSError:
+        pass
+    info = {'duration': None,
+            'live_clip': b'com.apple.quicktime.still-image-time' in blob}
+    i = blob.find(b'mvhd')
+    if i >= 0:
+        version = blob[i + 4] if i + 4 < len(blob) else None
+        try:
+            if version == 0:
+                timescale, dur = struct.unpack('>II', blob[i + 16:i + 24])
+            elif version == 1:
+                timescale, = struct.unpack('>I', blob[i + 24:i + 28])
+                dur, = struct.unpack('>Q', blob[i + 28:i + 36])
+            else:
+                timescale = dur = 0
+            if timescale:
+                info['duration'] = round(dur / timescale, 2)
+        except struct.error:
+            pass
+    _pt_mov_cache[key] = info
+    return info
+
+
 def _video_metadata(filepath):
     """Date + sort key for a clip. Unlike a photo — whose EXIF offset or GPS
     stamp pins a true UTC instant — an MP4 only carries naive local time, so a
     clip sorts by wall-clock; within a day's folder that's the same order.
     Falls back to the file's mtime when the header can't be read. MP4s carry no
     GPS here, so the coordinates stay empty and the map row just stays hidden."""
+    duration = _mov_info(filepath)['duration']
     stamp = _mp4_creation_time(filepath)
     if stamp is None:
         try:
@@ -241,7 +310,8 @@ def _video_metadata(filepath):
         except OSError:
             return {'date': None, 'sort_key': None, 'lat': None, 'lon': None, 'gmaps_url': None}
     text = stamp.strftime('%Y-%m-%d %H:%M:%S')
-    return {'date': text, 'sort_key': text, 'lat': None, 'lon': None, 'gmaps_url': None}
+    return {'date': text, 'sort_key': text, 'lat': None, 'lon': None,
+            'gmaps_url': None, 'duration': duration}
 
 
 def _extract_metadata(filepath):
@@ -433,6 +503,46 @@ def _make_video_poster(src, dst):
     img.save(dst, format='JPEG', quality=85)
 
 
+def _decode_frame_at_time(path, seconds):
+    """The frame showing at `seconds` of a video, full resolution, as a PIL
+    image.
+
+    Seeking lands on a keyframe, of which these files have very few, so the
+    exact frame is reached by decoding forward from just before the mark — a
+    short run, since OpenCV's seek already does the keyframe work. If a seek
+    overshoots the mark (some files report positions loosely), it backs off and
+    retries from further back, and finally from the start.
+    """
+    import cv2
+    target_ms = max(0.0, float(seconds)) * 1000.0
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        raise RuntimeError('could not open the video')
+    try:
+        for preroll in (400.0, 3000.0, None):
+            if preroll is None or target_ms <= preroll:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            else:
+                cap.set(cv2.CAP_PROP_POS_MSEC, target_ms - preroll)
+            frame, first = None, True
+            while True:
+                stamp = cap.get(cv2.CAP_PROP_POS_MSEC)
+                ok, got = cap.read()
+                if not ok:
+                    break
+                if first and preroll is not None and stamp > target_ms + 50:
+                    frame = None            # seek overshot; try again further back
+                    break
+                first, frame = False, got
+                if stamp >= target_ms - 1:  # first frame at or after the mark
+                    return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if frame is not None:           # ran off the end: the last frame it is
+                return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        raise RuntimeError('no frames could be decoded')
+    finally:
+        cap.release()
+
+
 def _warm_one(src, token):
     if token != _pt_warm_token:
         return
@@ -484,32 +594,74 @@ def _save_ratings_at(folder, ratings):
         json.dump(ratings, f, indent=2)
 
 
-def _matching_mov(heic_name):
-    """Sidecar Live Photo video for a HEIC ('IMG_1.HEIC' -> its 'IMG_1.MOV'/'.mov'),
-    or None. Matches by stem, case-insensitive extension."""
-    if not PT_FOLDER:
-        return None
-    stem = Path(heic_name).stem
+def _live_photo_sidecar(still_path):
+    """The Live Photo motion clip belonging to a still ('IMG_1.HEIC' ->
+    'IMG_1.MOV'/'.mov'), or None.
+
+    Matching by stem is how Photos exports a pair, but the stem alone isn't
+    proof: a genuine recording can share a name with a photo. The file also has
+    to carry Apple's still-image-time marker, so an ordinary video is never
+    treated as something that belongs to a photo — and so never silently
+    deleted or moved along with one.
+    """
+    still_path = Path(still_path)
     for ext in ('.MOV', '.mov'):
-        cand = Path(PT_FOLDER) / f'{stem}{ext}'
-        if cand.exists():
+        cand = still_path.with_suffix(ext)
+        if cand.exists() and _mov_info(cand)['live_clip']:
             return cand
     return None
 
 
+def _matching_mov(heic_name):
+    """The current folder's Live Photo sidecar for a still, or None."""
+    if not PT_FOLDER:
+        return None
+    return _live_photo_sidecar(Path(PT_FOLDER) / heic_name)
+
+
 def _pt_photo_files():
-    """All taggable photos in PT_FOLDER (HEIC, JPG/JPEG, PNG)."""
+    """Everything taggable in PT_FOLDER: stills (HEIC/JPG/PNG), MP4s, and .MOV
+    files that are real recordings.
+
+    Live Photo motion clips are .MOV too and vastly outnumber the recordings, so
+    they're filtered out: first for free, by a still of the same stem sitting
+    next to them (how Photos exports a Live Photo pair), and only for the
+    leftovers by reading the file's metadata — which also catches clips whose
+    still has since been deleted.
+    """
     if not PT_FOLDER:
         return []
-    result = []
+    names, movs, stems = [], [], set()
     try:
         with os.scandir(PT_FOLDER) as it:
             for e in it:
-                if e.is_file() and Path(e.name).suffix.lower() in PT_PHOTO_EXTS:
-                    result.append(e.name)
+                if not e.is_file():
+                    continue
+                ext = Path(e.name).suffix.lower()
+                if ext == '.mov':
+                    movs.append(e.name)
+                elif ext in PT_PHOTO_EXTS:
+                    names.append(e.name)
+                    if ext not in PT_VIDEO_EXTS:
+                        stems.add(Path(e.name).stem)
     except OSError:
         pass
-    return sorted(result)
+    for name in movs:
+        path = Path(PT_FOLDER) / name
+        if Path(name).stem in stems:         # next to a still of the same name
+            try:
+                small = path.stat().st_size <= PT_SIDECAR_MAX_BYTES
+            except OSError:
+                small = True
+            if small or _mov_info(path)['live_clip']:
+                continue                     # its photo's Live Photo clip
+        info = _mov_info(path)
+        if info['live_clip']:                # orphaned Live Photo clip
+            continue
+        if info['duration'] is not None and info['duration'] < PT_MIN_VIDEO_SECONDS:
+            continue
+        names.append(name)
+    return sorted(names)
 
 
 # ── Home ──────────────────────────────────────────────────────────────────────
@@ -575,6 +727,7 @@ def pt_photos():
             'tags': {'me': entry.get('me', False), 'blog': entry.get('blog', False), 'hidden': entry.get('hidden', False)},
             'note': entry.get('note', ''),
             'kind': 'video' if is_video else 'photo',
+            'duration': meta.get('duration'),
             # Live Photo sidecars belong to HEIC stills; an MP4 is the clip itself.
             'has_mov': (not is_video) and _matching_mov(filename) is not None,
         })
@@ -732,13 +885,22 @@ def pt_delete():
         return jsonify({'error': 'Invalid path'}), 403
     if not filepath.exists():
         return jsonify({'error': 'File not found'}), 404
+    # A Live Photo is one thing to the user, so its motion clip goes to the
+    # Trash with the still. Left behind, it becomes an orphan: a 1-3s clip with
+    # no photo, invisible to this tool but still eating disk.
+    sidecar = _live_photo_sidecar(filepath)
     _move_to_trash(filepath)
+    if sidecar:
+        try:
+            _move_to_trash(sidecar)
+        except Exception:
+            pass
     ratings = _load_ratings()
     ratings.pop(filename, None)
     _save_ratings(ratings)
     with _pt_cache_lock:
         _pt_meta_cache.pop(filename, None)
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'sidecar_trashed': sidecar.name if sidecar else None})
 
 
 @app.route('/photo-tagger/api/move', methods=['POST'])
@@ -764,7 +926,7 @@ def pt_move():
     if dest_dir == folder:
         return jsonify({'error': 'Photo is already in that folder'}), 400
 
-    mov = _matching_mov(filename)  # resolve while the photo is still here
+    mov = _live_photo_sidecar(filepath)  # resolve while the photo is still here
     dest = _pi_unique_dest(dest_dir, filepath.name)
     try:
         shutil.move(str(filepath), str(dest))
@@ -991,6 +1153,58 @@ _PT_ROTATE = {90: Image.Transpose.ROTATE_270,
               270: Image.Transpose.ROTATE_90}
 
 
+@app.route('/photo-tagger/api/video-frame', methods=['POST'])
+def pt_video_frame():
+    """Save the frame showing at `time` seconds of a video as a NEW HEIC in the
+    same folder, at the video's native resolution.
+
+    The name keeps a _frame suffix ('IMG_1.MOV' -> 'IMG_1_frame.HEIC') rather
+    than taking the clip's own stem: a still named exactly after a video would
+    make that video look like a Live Photo pair and drop it from the listing.
+    EXIF DateTime is written as the clip's recording time plus the offset into
+    it, so the still sorts to the moment it was actually taken."""
+    data = request.json or {}
+    filename = (data.get('filename') or '').strip()
+    try:
+        seconds = max(0.0, float(data.get('time')))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Missing frame time'}), 400
+    if not PT_FOLDER or not filename:
+        return jsonify({'error': 'Missing data'}), 400
+    folder = Path(PT_FOLDER).resolve()
+    src = (folder / filename).resolve()
+    if src.parent != folder:
+        return jsonify({'error': 'Invalid path'}), 403
+    if not src.exists() or src.suffix.lower() not in PT_VIDEO_EXTS:
+        return jsonify({'error': 'File not found'}), 404
+    # Past the end there is nothing to seek to, and the decoder would fall back
+    # to reading the whole file to find out — minutes, for a long 4K clip.
+    duration = _mov_info(src)['duration']
+    if duration:
+        seconds = min(seconds, max(0.0, duration - 0.05))
+    try:
+        frame = _decode_frame_at_time(src, seconds).convert('RGB')
+        exif = Image.Exif()
+        # Same fallback the listing uses, so a clip whose header carries no
+        # recording time still yields a still that sorts near its video.
+        started = _mp4_creation_time(src)
+        if started is None:
+            try:
+                started = datetime.fromtimestamp(src.stat().st_mtime)
+            except OSError:
+                started = None
+        if started:
+            shot = started + timedelta(seconds=seconds)
+            exif[306] = shot.strftime('%Y:%m:%d %H:%M:%S')      # DateTime
+        dest = _pi_unique_dest(folder, f'{src.stem}_frame.HEIC')
+        frame.save(dest, format='HEIF', quality=100, exif=exif.tobytes())
+    except Exception as e:
+        return jsonify({'error': f'Frame save failed: {e}'}), 500
+    with _pt_cache_lock:
+        _pt_meta_cache.pop(dest.name, None)
+    return jsonify({'ok': True, 'filename': dest.name})
+
+
 @app.route('/photo-tagger/api/rotate', methods=['POST'])
 def pt_rotate():
     """Rotate a photo 90/180/270 degrees clockwise and write a NEW adjacent
@@ -1155,7 +1369,7 @@ def open_privacy_settings():
 
 @app.route('/photo-tagger/api/listdirs')
 def pt_listdirs():
-    data = _listdirs_json(request.args.get('path', ''), exts=PT_PHOTO_EXTS)
+    data = _listdirs_json(request.args.get('path', ''), exts=PT_BROWSE_EXTS)
     if data is None:
         return jsonify({'error': 'not a directory'}), 400
     return jsonify(data)
@@ -2093,7 +2307,7 @@ def pp_run():
     files = data.get('files') or []
     if not root.is_dir() or not isinstance(files, list):
         return jsonify({'error': 'Invalid request'}), 400
-    deleted, errors = 0, []
+    deleted, sidecars, errors = 0, 0, []
     for rel in files:
         filepath = (root / str(rel)).resolve()
         if not str(filepath).startswith(str(root) + os.sep) or filepath.suffix.lower() not in _PRUNE_IMG_EXTS:
@@ -2103,11 +2317,18 @@ def pp_run():
             errors.append({'file': str(rel), 'error': 'File not found'})
             continue
         try:
+            sidecar = _live_photo_sidecar(filepath)   # Live Photo clip goes with its still
             _move_to_trash(filepath)
             deleted += 1
+            if sidecar:
+                try:
+                    _move_to_trash(sidecar)
+                    sidecars += 1
+                except Exception:
+                    pass
         except Exception as e:
             errors.append({'file': str(rel), 'error': str(e)})
-    return jsonify({'ok': True, 'deleted': deleted, 'errors': errors})
+    return jsonify({'ok': True, 'deleted': deleted, 'sidecars': sidecars, 'errors': errors})
 
 
 # ── Launch ────────────────────────────────────────────────────────────────────
