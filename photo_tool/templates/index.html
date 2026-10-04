@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photo Tagger</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────────── */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+
+  #folder-input {
+    flex: 1;
+    background: #222;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 10px;
+    outline: none;
+    font-family: 'SF Mono', 'Menlo', monospace;
+  }
+  #folder-input:focus { border-color: #555; color: #fff; }
+
+  .top-btn {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .top-btn:hover { background: #3a3a3a; color: #fff; }
+
+  #counter {
+    font-size: 12px;
+    color: #666;
+    white-space: nowrap;
+    min-width: 50px;
+    text-align: right;
+  }
+
+  /* ─── FOLDER BROWSER MODAL ────────────────────────────────── */
+  #browser-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #browser-backdrop.open { display: flex; }
+
+  #browser-modal {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 12px;
+    width: 540px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+
+  #browser-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-up {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 13px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #browser-up:hover { background: #333; color: #fff; }
+  #browser-up:disabled { opacity: 0.3; cursor: default; }
+
+  #browser-path {
+    flex: 1;
+    font-size: 11px;
+    color: #555;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
+  }
+
+  #browser-cancel {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  #browser-cancel:hover { color: #aaa; }
+
+  #browser-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 6px 0;
+  }
+
+  .browser-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    gap: 10px;
+    transition: background 0.08s;
+  }
+  .browser-item:hover { background: #262626; }
+
+  .browser-item .folder-icon { font-size: 16px; flex-shrink: 0; }
+  .browser-item .folder-name { flex: 1; font-size: 13px; color: #ddd; }
+  .browser-item .heic-badge {
+    font-size: 10px;
+    color: #00b8a9;
+    background: #002d2a;
+    border: 1px solid #007a70;
+    border-radius: 10px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+
+  #browser-footer {
+    padding: 10px 16px;
+    border-top: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-select {
+    background: #1a4a8a;
+    border: 1px solid #2a6acc;
+    border-radius: 7px;
+    color: #fff;
+    font-size: 13px;
+    padding: 7px 18px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  #browser-select:hover { background: #1f5aa0; }
+
+  #browser-current-label {
+    font-size: 11px;
+    color: #555;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ─── PHOTO AREA ──────────────────────────────────────────── */
+  #photo-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #main-photo {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    transition: opacity 0.12s ease;
+  }
+  #main-photo.fading { opacity: 0; }
+
+  #loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #555;
+    pointer-events: none;
+  }
+
+  #empty-state {
+    text-align: center;
+    color: #444;
+  }
+  #empty-state h2 { font-size: 18px; margin-bottom: 8px; color: #555; }
+  #empty-state p { font-size: 13px; }
+
+  /* ─── NAV ARROWS ──────────────────────────────────────────── */
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.45);
+    border: none;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s, opacity 0.15s;
+    z-index: 10;
+    opacity: 0;
+  }
+  #photo-area:hover .nav-btn { opacity: 1; }
+  .nav-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+  .nav-btn:disabled { opacity: 0 !important; cursor: default; }
+  #prev-btn { left: 12px; }
+  #next-btn { right: 12px; }
+
+  /* ─── BOTTOM BAR ──────────────────────────────────────────── */
+  #bottom-bar {
+    flex-shrink: 0;
+    background: #141414;
+    border-top: 1px solid #2a2a2a;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    min-height: 70px;
+  }
+
+  #photo-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  #filename-label {
+    font-size: 11px;
+    color: #555;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #date-label { font-size: 13px; color: #aaa; }
+
+  #gps-link {
+    font-size: 12px;
+    color: #5a9fd4;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  #gps-link:hover { color: #7ab8e8; text-decoration: underline; }
+  #gps-link.hidden { display: none; }
+
+  /* ─── TAG BUTTONS ─────────────────────────────────────────── */
+  #tag-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .tag-btn {
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1e1e1e;
+    color: #666;
+    font-size: 14px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.08s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 72px;
+  }
+  .tag-btn:hover { background: #2a2a2a; color: #aaa; border-color: #444; }
+  .tag-btn:active { transform: scale(0.95); }
+  .tag-btn .key-hint { font-size: 9px; opacity: 0.45; letter-spacing: 0.5px; }
+
+  .tag-btn.active-me     { background: #2d2200; color: #f5c518; border-color: #8a6d00; }
+  .tag-btn.active-blog   { background: #002d2a; color: #00d4c4; border-color: #007a70; }
+  .tag-btn.active-hidden { background: #2d0808; color: #e84040; border-color: #8a1a1a; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <button class="top-btn" onclick="openBrowser()">Browse…</button>
+  <input
+    id="folder-input"
+    type="text"
+    placeholder="Paste folder path here…"
+    spellcheck="false"
+    autocomplete="off"
+  >
+  <button class="top-btn" onclick="loadFolder()">Open</button>
+  <span id="counter"></span>
+</div>
+
+<!-- FOLDER BROWSER MODAL -->
+<div id="browser-backdrop">
+  <div id="browser-modal">
+    <div id="browser-header">
+      <button id="browser-up" onclick="browserUp()">&#8593; Up</button>
+      <span id="browser-path"></span>
+      <button id="browser-cancel" onclick="closeBrowser()">&#10005;</button>
+    </div>
+    <div id="browser-list"></div>
+    <div id="browser-footer">
+      <button id="browser-select" onclick="selectCurrentFolder()">Open this folder</button>
+      <span id="browser-current-label"></span>
+    </div>
+  </div>
+</div>
+
+<!-- PHOTO AREA -->
+<div id="photo-area">
+  <div id="loading-overlay" style="display:none">Loading…</div>
+  <div id="empty-state">
+    <h2>No folder loaded</h2>
+    <p>Click <strong>Browse…</strong> or paste a folder path above.</p>
+  </div>
+  <img id="main-photo" src="" alt="" style="display:none" onload="onPhotoLoaded()">
+  <button class="nav-btn" id="prev-btn" onclick="navigate(-1)" disabled>&#8249;</button>
+  <button class="nav-btn" id="next-btn" onclick="navigate(1)" disabled>&#8250;</button>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottom-bar">
+  <div id="photo-info">
+    <span id="filename-label"></span>
+    <span id="date-label"></span>
+    <a id="gps-link" href="#" target="_blank" class="hidden">&#128205; <span id="gps-coords"></span></a>
+  </div>
+  <div id="tag-buttons">
+    <button class="tag-btn" id="btn-me"     onclick="toggleTag('me')">
+      <span>&#9733; Me</span>
+      <span class="key-hint">KEY 1</span>
+    </button>
+    <button class="tag-btn" id="btn-blog"   onclick="toggleTag('blog')">
+      <span>&#9671; Blog</span>
+      <span class="key-hint">KEY 2</span>
+    </button>
+    <button class="tag-btn" id="btn-hidden" onclick="toggleTag('hidden')">
+      <span>&#10005; Hidden</span>
+      <span class="key-hint">KEY 3</span>
+    </button>
+  </div>
+</div>
+
+<div id="preloader" style="display:none"></div>
+
+<script>
+  let photos = [];
+  let idx = 0;
+  let browserPath = '';
+
+  // ─── INIT ─────────────────────────────────────────────────────
+  async function init() {
+    try {
+      const res = await fetch('/api/status');
+      const { folder } = await res.json();
+      if (folder) {
+        document.getElementById('folder-input').value = folder;
+        await fetchPhotos();
+      }
+    } catch (e) {
+      console.warn('Server not reachable on init:', e);
+    }
+  }
+
+  // ─── FOLDER BROWSER ───────────────────────────────────────────
+  async function openBrowser() {
+    // Show modal immediately, then load directory
+    document.getElementById('browser-backdrop').classList.add('open');
+    document.getElementById('browser-list').innerHTML =
+      '<div style="padding:20px 16px;color:#555;font-size:13px;">Loading…</div>';
+    const current = document.getElementById('folder-input').value.trim();
+    const startPath = current || '/Users/jere/Desktop/travelBLog';
+    await browserNavigate(startPath);
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-backdrop').classList.remove('open');
+  }
+
+  async function browserNavigate(path) {
+    const res = await fetch(`/api/listdirs?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) return;
+
+    browserPath = data.path;
+
+    document.getElementById('browser-path').textContent = data.path;
+    document.getElementById('browser-current-label').textContent = data.path.split('/').pop() || '/';
+    document.getElementById('browser-up').disabled = !data.parent;
+
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '';
+
+    if (data.entries.length === 0) {
+      list.innerHTML = '<div style="padding:20px 16px;color:#444;font-size:13px;">No subfolders here</div>';
+      return;
+    }
+
+    data.entries.forEach(entry => {
+      const row = document.createElement('div');
+      row.className = 'browser-item';
+      row.innerHTML = `
+        <span class="folder-icon">&#128193;</span>
+        <span class="folder-name">${entry.name}</span>
+        ${entry.heic_count > 0 ? `<span class="heic-badge">${entry.heic_count} photos</span>` : ''}
+      `;
+      row.addEventListener('click', () => browserNavigate(entry.path));
+      list.appendChild(row);
+    });
+  }
+
+  async function browserUp() {
+    const res = await fetch(`/api/listdirs?path=${encodeURIComponent(browserPath)}`);
+    const data = await res.json();
+    if (data.parent) await browserNavigate(data.parent);
+  }
+
+  async function selectCurrentFolder() {
+    closeBrowser();
+    document.getElementById('folder-input').value = browserPath;
+    await loadFolder();
+  }
+
+  // ─── FOLDER LOADING ───────────────────────────────────────────
+  async function loadFolder() {
+    const path = document.getElementById('folder-input').value.trim();
+    if (!path) return;
+    document.getElementById('folder-input').blur();
+
+    const res = await fetch('/api/folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: path })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    await fetchPhotos();
+  }
+
+  async function fetchPhotos() {
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('main-photo').style.display = 'none';
+
+    const res = await fetch('/api/photos');
+    const data = await res.json();
+    photos = data.photos || [];
+    idx = 0;
+
+    document.getElementById('loading-overlay').style.display = 'none';
+
+    if (photos.length === 0) {
+      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('empty-state').innerHTML = '<h2>No HEIC photos found</h2><p>Check the folder path.</p>';
+      return;
+    }
+
+    showPhoto(0);
+  }
+
+  // ─── PHOTO DISPLAY ────────────────────────────────────────────
+  function showPhoto(i) {
+    if (photos.length === 0) return;
+    idx = Math.max(0, Math.min(i, photos.length - 1));
+    const photo = photos[idx];
+
+    const imgEl = document.getElementById('main-photo');
+    imgEl.classList.add('fading');
+    imgEl.src = `/api/image/${encodeURIComponent(photo.filename)}`;
+    imgEl.style.display = 'block';
+
+    document.getElementById('counter').textContent = `${idx + 1} / ${photos.length}`;
+    document.getElementById('filename-label').textContent = photo.filename;
+    document.getElementById('date-label').textContent = photo.date || '';
+
+    const gpsLink = document.getElementById('gps-link');
+    if (photo.gmaps_url && photo.lat != null) {
+      gpsLink.href = photo.gmaps_url;
+      document.getElementById('gps-coords').textContent =
+        `${photo.lat.toFixed(4)}, ${photo.lon.toFixed(4)}`;
+      gpsLink.classList.remove('hidden');
+    } else {
+      gpsLink.classList.add('hidden');
+    }
+
+    renderTags(photo.tags);
+    updateNavButtons();
+    preloadAdjacent(idx);
+  }
+
+  function onPhotoLoaded() {
+    document.getElementById('main-photo').classList.remove('fading');
+  }
+
+  function navigate(delta) { showPhoto(idx + delta); }
+
+  function updateNavButtons() {
+    document.getElementById('prev-btn').disabled = (idx === 0);
+    document.getElementById('next-btn').disabled = (idx === photos.length - 1);
+  }
+
+  // ─── PRELOADING ───────────────────────────────────────────────
+  function preloadAdjacent(i) {
+    const preloader = document.getElementById('preloader');
+    preloader.innerHTML = '';
+    [-1, 1, 2].forEach(offset => {
+      const j = i + offset;
+      if (j >= 0 && j < photos.length) {
+        const img = document.createElement('img');
+        img.src = `/api/image/${encodeURIComponent(photos[j].filename)}`;
+        preloader.appendChild(img);
+      }
+    });
+  }
+
+  // ─── TAGS ─────────────────────────────────────────────────────
+  function renderTags(tags) {
+    const t = tags || { me: false, blog: false, hidden: false };
+    document.getElementById('btn-me').className     = 'tag-btn' + (t.me     ? ' active-me'     : '');
+    document.getElementById('btn-blog').className   = 'tag-btn' + (t.blog   ? ' active-blog'   : '');
+    document.getElementById('btn-hidden').className = 'tag-btn' + (t.hidden ? ' active-hidden' : '');
+  }
+
+  function toggleTag(category) {
+    if (photos.length === 0) return;
+    const photo = photos[idx];
+    if (!photo.tags) photo.tags = { me: false, blog: false, hidden: false };
+    photo.tags[category] = !photo.tags[category];
+    renderTags(photo.tags);
+    fetch('/api/star', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: photo.filename, category, value: photo.tags[category] })
+    });
+  }
+
+  // ─── KEYBOARD ─────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('browser-backdrop').classList.contains('open')) {
+      if (e.key === 'Escape') closeBrowser();
+      return;
+    }
+    if (document.activeElement === document.getElementById('folder-input')) {
+      if (e.key === 'Enter') loadFolder();
+      if (e.key === 'Escape') document.getElementById('folder-input').blur();
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowLeft':  e.preventDefault(); navigate(-1); break;
+      case 'ArrowRight': e.preventDefault(); navigate(1);  break;
+      case '1': toggleTag('me');     break;
+      case '2': toggleTag('blog');   break;
+      case '3': toggleTag('hidden'); break;
+    }
+  });
+
+  document.getElementById('folder-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadFolder();
+  });
+
+  // Close modal on backdrop click
+  document.getElementById('browser-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('browser-backdrop')) closeBrowser();
+  });
+
+  init();
+</script>
+</body>
+</html>

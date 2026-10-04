@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day Splitter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────────── */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+
+  #home-btn {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  #home-btn:hover { background: #222; color: #aaa; }
+  #divider { width: 1px; height: 18px; background: #2a2a2a; }
+
+  #folder-input {
+    flex: 1;
+    background: #222;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 10px;
+    outline: none;
+    font-family: 'SF Mono', 'Menlo', monospace;
+  }
+  #folder-input:focus { border-color: #555; color: #fff; }
+
+  .top-btn {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .top-btn:hover { background: #3a3a3a; color: #fff; }
+
+  /* ─── FOLDER BROWSER MODAL ────────────────────────────────── */
+  #browser-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #browser-backdrop.open { display: flex; }
+
+  #browser-modal {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 12px;
+    width: 540px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+
+  #browser-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-up {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 13px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  #browser-up:hover { background: #333; color: #fff; }
+  #browser-up:disabled { opacity: 0.3; cursor: default; }
+
+  #browser-path {
+    flex: 1;
+    font-size: 11px;
+    color: #555;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
+  }
+
+  #browser-cancel {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  #browser-cancel:hover { color: #aaa; }
+
+  #browser-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+
+  .browser-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    gap: 10px;
+    transition: background 0.08s;
+  }
+  .browser-item:hover { background: #262626; }
+  .browser-item .folder-icon { font-size: 16px; }
+  .browser-item .folder-name { flex: 1; font-size: 13px; color: #ddd; }
+  .browser-item .heic-badge {
+    font-size: 10px;
+    color: #00b8a9;
+    background: #002d2a;
+    border: 1px solid #007a70;
+    border-radius: 10px;
+    padding: 2px 7px;
+  }
+
+  #browser-footer {
+    padding: 10px 16px;
+    border-top: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-select {
+    background: #1a4a8a;
+    border: 1px solid #2a6acc;
+    border-radius: 7px;
+    color: #fff;
+    font-size: 13px;
+    padding: 7px 18px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  #browser-select:hover { background: #1f5aa0; }
+
+  #browser-current-label {
+    font-size: 11px;
+    color: #555;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ─── MAIN CONTENT ────────────────────────────────────────── */
+  #main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #empty-state {
+    margin-top: 80px;
+    text-align: center;
+    color: #3a3a3a;
+  }
+  #empty-state .big-icon { font-size: 48px; margin-bottom: 16px; }
+  #empty-state p { font-size: 14px; color: #555; }
+
+  #preview-section { width: 100%; max-width: 540px; }
+
+  #preview-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  #preview-header h2 { font-size: 16px; font-weight: 600; color: #ccc; }
+  #preview-header .summary { font-size: 12px; color: #555; }
+
+  #aae-notice {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #ff9800;
+    background: #1a1000;
+    border: 1px solid #7a4800;
+    border-radius: 8px;
+    padding: 9px 14px;
+    margin-bottom: 16px;
+  }
+
+  #days-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 28px; }
+
+  .day-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #171717;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 11px 16px;
+  }
+
+  .day-date { font-size: 14px; font-weight: 500; color: #ddd; min-width: 110px; }
+
+  .day-bar-wrap { flex: 1; height: 4px; background: #2a2a2a; border-radius: 2px; }
+  .day-bar { height: 4px; background: #3a7bd5; border-radius: 2px; transition: width 0.3s; }
+
+  .day-count { font-size: 12px; color: #555; min-width: 60px; text-align: right; }
+
+  #split-btn {
+    background: #1a4a8a;
+    border: 1px solid #2a6acc;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px 36px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    align-self: center;
+  }
+  #split-btn:hover { background: #1f5aa0; }
+  #split-btn:active { transform: scale(0.97); }
+  #split-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+  #done-section {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 60px;
+  }
+  #done-section .done-icon { font-size: 48px; }
+  #done-section h2 { font-size: 20px; color: #ccc; }
+  #done-section p { font-size: 13px; color: #555; }
+
+  #reset-btn {
+    margin-top: 8px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 7px;
+    color: #aaa;
+    font-size: 13px;
+    padding: 8px 20px;
+    cursor: pointer;
+  }
+  #reset-btn:hover { background: #2a2a2a; color: #ddd; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <button id="home-btn" onclick="window.location='/'">&#8592; Home</button>
+  <div id="divider"></div>
+  <button class="top-btn" onclick="openBrowser()">Browse…</button>
+  <input id="folder-input" type="text" placeholder="Select a folder of photos/videos…"
+         spellcheck="false" autocomplete="off">
+  <button class="top-btn" onclick="loadPreview()">Preview</button>
+</div>
+
+<!-- FOLDER BROWSER MODAL -->
+<div id="browser-backdrop">
+  <div id="browser-modal">
+    <div id="browser-header">
+      <button id="browser-up" onclick="browserUp()">&#8593; Up</button>
+      <span id="browser-path"></span>
+      <button id="browser-cancel" onclick="closeBrowser()">&#10005;</button>
+    </div>
+    <div id="browser-list"></div>
+    <div id="browser-footer">
+      <button id="browser-select" onclick="selectCurrentFolder()">Select this folder</button>
+      <span id="browser-current-label"></span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <div id="empty-state">
+    <div class="big-icon">📂</div>
+    <p>Select a folder to see how photos &amp; videos will be split by day.<br>.AAE sidecar files get deleted (moved to Trash).</p>
+  </div>
+
+  <div id="preview-section" style="display:none">
+    <div id="preview-header">
+      <h2>Preview</h2>
+      <span class="summary" id="summary-text"></span>
+    </div>
+    <div id="aae-notice"></div>
+    <div id="days-list"></div>
+    <button id="split-btn" onclick="runSplit()">Split into subfolders</button>
+  </div>
+
+  <div id="done-section" style="display:none">
+    <div class="done-icon">✅</div>
+    <h2>Done!</h2>
+    <p id="done-text"></p>
+    <button id="reset-btn" onclick="reset()">Split another folder</button>
+  </div>
+
+</div>
+
+<div id="preloader" style="display:none"></div>
+
+<script>
+  const API = '/day-splitter/api';
+  let browserPath = '';
+  let currentFolder = '';
+  let previewData = null;
+
+  // ─── FOLDER BROWSER ───────────────────────────────────────────
+  async function openBrowser() {
+    document.getElementById('browser-backdrop').classList.add('open');
+    document.getElementById('browser-list').innerHTML =
+      '<div style="padding:20px 16px;color:#555;font-size:13px;">Loading…</div>';
+    const current = document.getElementById('folder-input').value.trim();
+    await browserNavigate(current || '/Users/jere/Desktop');
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-backdrop').classList.remove('open');
+  }
+
+  async function browserNavigate(path) {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) return;
+    browserPath = data.path;
+    document.getElementById('browser-path').textContent = data.path;
+    document.getElementById('browser-current-label').textContent = data.path.split('/').pop() || '/';
+    document.getElementById('browser-up').disabled = !data.parent;
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '';
+    if (!data.entries.length) {
+      list.innerHTML = '<div style="padding:20px 16px;color:#444;font-size:13px;">No subfolders here</div>';
+      return;
+    }
+    data.entries.forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'browser-item';
+      row.innerHTML = `
+        <span class="folder-icon">📁</span>
+        <span class="folder-name">${e.name}</span>
+        ${e.heic_count > 0 ? `<span class="heic-badge">${e.heic_count} photos</span>` : ''}
+      `;
+      row.addEventListener('click', () => browserNavigate(e.path));
+      list.appendChild(row);
+    });
+  }
+
+  async function browserUp() {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(browserPath)}`);
+    const data = await res.json();
+    if (data.parent) await browserNavigate(data.parent);
+  }
+
+  async function selectCurrentFolder() {
+    closeBrowser();
+    document.getElementById('folder-input').value = browserPath;
+    await loadPreview();
+  }
+
+  // ─── PREVIEW ──────────────────────────────────────────────────
+  async function loadPreview() {
+    const path = document.getElementById('folder-input').value.trim();
+    if (!path) return;
+    document.getElementById('folder-input').blur();
+
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('done-section').style.display = 'none';
+    document.getElementById('preview-section').style.display = 'none';
+    document.getElementById('summary-text').textContent = 'Scanning…';
+    document.getElementById('preview-section').style.display = 'block';
+    document.getElementById('days-list').innerHTML =
+      '<div style="padding:16px 0;color:#555;font-size:13px;">Reading dates…</div>';
+
+    const res = await fetch(`${API}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: path })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    previewData = data;
+    currentFolder = path;
+    renderPreview(data);
+  }
+
+  function renderPreview(data) {
+    document.getElementById('summary-text').textContent =
+      `${data.total} files · ${data.days.length} day${data.days.length !== 1 ? 's' : ''}`;
+
+    const notice = document.getElementById('aae-notice');
+    if (data.aae_count > 0) {
+      notice.style.display = 'flex';
+      notice.textContent = `⚠ ${data.aae_count} .AAE file${data.aae_count !== 1 ? 's' : ''} will be deleted (moved to Trash) — no photos will be split into it.`;
+    } else {
+      notice.style.display = 'none';
+    }
+
+    const list = document.getElementById('days-list');
+    list.innerHTML = '';
+    if (!data.days.length) {
+      list.innerHTML = '<div style="padding:16px 0;color:#444;font-size:13px;">No photos or videos to sort.</div>';
+      document.getElementById('split-btn').disabled = data.aae_count === 0;
+      return;
+    }
+    const maxCount = Math.max(...data.days.map(d => d.count));
+    data.days.forEach(day => {
+      const pct = Math.round((day.count / maxCount) * 100);
+      const row = document.createElement('div');
+      row.className = 'day-row';
+      row.innerHTML = `
+        <span class="day-date">${day.date}</span>
+        <div class="day-bar-wrap"><div class="day-bar" style="width:${pct}%"></div></div>
+        <span class="day-count">${day.count} file${day.count !== 1 ? 's' : ''}</span>
+      `;
+      list.appendChild(row);
+    });
+
+    document.getElementById('split-btn').disabled = false;
+  }
+
+  // ─── SPLIT ────────────────────────────────────────────────────
+  async function runSplit() {
+    const btn = document.getElementById('split-btn');
+    btn.disabled = true;
+    btn.textContent = 'Moving files…';
+
+    const res = await fetch(`${API}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: currentFolder })
+    });
+    const data = await res.json();
+
+    if (!data.ok) { alert('Something went wrong.'); btn.disabled = false; btn.textContent = 'Split into subfolders'; return; }
+
+    const totalMoved = Object.values(data.moved).reduce((a, b) => a + b, 0);
+    const days = Object.keys(data.moved).length;
+    const aaeBit = data.deleted_aae ? ` Deleted ${data.deleted_aae} .AAE file${data.deleted_aae !== 1 ? 's' : ''} (moved to Trash).` : '';
+
+    document.getElementById('preview-section').style.display = 'none';
+    document.getElementById('done-section').style.display = 'flex';
+    document.getElementById('done-text').textContent =
+      `Moved ${totalMoved} file${totalMoved !== 1 ? 's' : ''} into ${days} day folder${days !== 1 ? 's' : ''}.${aaeBit}` +
+      (data.errors.length ? ` (${data.errors.length} errors)` : '');
+  }
+
+  function reset() {
+    document.getElementById('folder-input').value = '';
+    document.getElementById('done-section').style.display = 'none';
+    document.getElementById('preview-section').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'block';
+    document.getElementById('split-btn').textContent = 'Split into subfolders';
+    previewData = null;
+    currentFolder = '';
+  }
+
+  // ─── KEYBOARD ─────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('browser-backdrop').classList.contains('open')) {
+      if (e.key === 'Escape') closeBrowser();
+      return;
+    }
+    if (document.activeElement === document.getElementById('folder-input')) {
+      if (e.key === 'Enter') loadPreview();
+      if (e.key === 'Escape') document.getElementById('folder-input').blur();
+    }
+  });
+
+  document.getElementById('folder-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadPreview();
+  });
+
+  document.getElementById('browser-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('browser-backdrop')) closeBrowser();
+  });
+</script>
+</body>
+</html>

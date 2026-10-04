@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map Generator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────────── */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  #home-btn {
+    background: none; border: none; color: #555; font-size: 13px;
+    cursor: pointer; padding: 4px 6px; border-radius: 5px; white-space: nowrap;
+  }
+  #home-btn:hover { background: #222; color: #aaa; }
+  .bar-sep { width: 1px; height: 18px; background: #2a2a2a; }
+
+  /* ─── LAYOUT ──────────────────────────────────────────────── */
+  #layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ─── SIDEBAR ─────────────────────────────────────────────── */
+  #sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: #141414;
+    border-right: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #browse-area {
+    padding: 12px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #browse-btn {
+    background: #2d2d2d; border: 1px solid #444; border-radius: 6px;
+    color: #ccc; font-size: 12px; padding: 6px 12px; cursor: pointer; width: 100%;
+    text-align: left;
+  }
+  #browse-btn:hover { background: #3a3a3a; color: #fff; }
+
+  #parent-label {
+    font-size: 10px;
+    color: #444;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #folder-list-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 0;
+  }
+
+  #folder-list-empty {
+    padding: 20px 14px;
+    font-size: 12px;
+    color: #3a3a3a;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .folder-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.08s;
+  }
+  .folder-row:hover { background: #1c1c1c; }
+
+  .folder-row input[type="checkbox"] {
+    accent-color: #4FC3F7;
+    width: 14px; height: 14px;
+    flex-shrink: 0; cursor: pointer;
+  }
+
+  .folder-row-name {
+    flex: 1; font-size: 12px; color: #bbb;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .folder-row:hover .folder-row-name { color: #ddd; }
+
+  .folder-swatch {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .folder-row-count { font-size: 10px; color: #444; white-space: nowrap; flex-shrink: 0; }
+
+  #sidebar-footer {
+    border-top: 1px solid #222;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #select-actions { display: flex; gap: 6px; }
+
+  .small-btn {
+    background: #222; border: 1px solid #333; border-radius: 5px;
+    color: #666; font-size: 11px; padding: 4px 10px; cursor: pointer; flex: 1;
+  }
+  .small-btn:hover { color: #aaa; background: #2a2a2a; }
+
+  #generate-btn {
+    background: #1a4a8a; border: 1px solid #2a6acc; border-radius: 7px;
+    color: #fff; font-size: 13px; font-weight: 600; padding: 9px;
+    cursor: pointer; width: 100%; transition: background 0.12s;
+  }
+  #generate-btn:hover { background: #1f5aa0; }
+  #generate-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* ─── MAP AREA ────────────────────────────────────────────── */
+  #map-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    text-align: center;
+    padding: 40px;
+    background: #111;
+  }
+  #empty-state .icon { font-size: 52px; margin-bottom: 14px; }
+  #empty-state p { font-size: 13px; color: #444; line-height: 1.6; }
+
+  #loading-state {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: #111;
+  }
+  .spinner {
+    width: 34px; height: 34px;
+    border: 3px solid #222; border-top-color: #4FC3F7;
+    border-radius: 50%; animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-label { font-size: 13px; color: #555; }
+
+  #map-view {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #leaflet-map {
+    flex: 1;
+    min-height: 0;
+  }
+
+  #map-footer {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    background: #141414;
+    border-top: 1px solid #222;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #legend {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #888;
+  }
+  .legend-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  #map-stats { font-size: 11px; color: #444; white-space: nowrap; }
+
+  #export-btn {
+    background: #222; border: 1px solid #333; border-radius: 6px;
+    color: #888; font-size: 11px; padding: 5px 12px; cursor: pointer;
+    white-space: nowrap; font-weight: 500; flex-shrink: 0;
+    transition: background 0.1s, color 0.1s;
+  }
+  #export-btn:hover:not(:disabled) { background: #2a2a2a; color: #ccc; }
+  #export-btn:disabled { opacity: 0.4; cursor: default; }
+
+  /* ─── FOLDER BROWSER MODAL ────────────────────────────────── */
+  #browser-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  #browser-backdrop.open { display: flex; }
+  #browser-modal {
+    background: #1c1c1c; border: 1px solid #333; border-radius: 12px;
+    width: 520px; max-height: 68vh; display: flex; flex-direction: column;
+    overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+  #browser-header {
+    padding: 12px 16px; border-bottom: 1px solid #2a2a2a;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #browser-up {
+    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px;
+    color: #aaa; font-size: 13px; padding: 4px 10px; cursor: pointer;
+  }
+  #browser-up:hover { background: #333; color: #fff; }
+  #browser-up:disabled { opacity: 0.3; cursor: default; }
+  #browser-path {
+    flex: 1; font-size: 11px; color: #555;
+    font-family: 'SF Mono','Menlo',monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    direction: rtl; text-align: left;
+  }
+  #browser-cancel { background: none; border: none; color: #555; font-size: 18px; cursor: pointer; padding: 2px 4px; }
+  #browser-cancel:hover { color: #aaa; }
+  #browser-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+  .browser-item {
+    display: flex; align-items: center; padding: 8px 16px;
+    cursor: pointer; gap: 10px; transition: background 0.08s;
+  }
+  .browser-item:hover { background: #262626; }
+  .browser-item .b-name { flex: 1; font-size: 13px; color: #ddd; }
+  .browser-item .b-badge {
+    font-size: 10px; color: #00b8a9; background: #002d2a;
+    border: 1px solid #007a70; border-radius: 10px; padding: 2px 7px;
+  }
+  #browser-footer {
+    padding: 10px 16px; border-top: 1px solid #2a2a2a;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #browser-select {
+    background: #1a4a8a; border: 1px solid #2a6acc; border-radius: 7px;
+    color: #fff; font-size: 13px; padding: 7px 18px; cursor: pointer; font-weight: 500;
+  }
+  #browser-select:hover { background: #1f5aa0; }
+  #browser-cur { font-size: 11px; color: #555; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Leaflet popup tweaks */
+  .leaflet-popup-content-wrapper {
+    border-radius: 8px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18) !important;
+  }
+  .leaflet-popup-content { font-size: 13px; font-family: -apple-system, sans-serif; }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <button id="home-btn" onclick="window.location='/'">&#8592; Home</button>
+  <div class="bar-sep"></div>
+  <span style="font-size:13px;color:#555;">Map Generator</span>
+</div>
+
+<div id="layout">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="browse-area">
+      <button id="browse-btn" onclick="openBrowser()">📂 Browse trip folder…</button>
+      <div id="parent-label">No folder selected</div>
+    </div>
+
+    <div id="folder-list-wrap">
+      <div id="folder-list-empty">Browse a trip folder to see its day subfolders.</div>
+      <div id="folder-list"></div>
+    </div>
+
+    <div id="sidebar-footer">
+      <div id="select-actions">
+        <button class="small-btn" onclick="selectAll()">Select all</button>
+        <button class="small-btn" onclick="selectNone()">Clear</button>
+      </div>
+      <button id="generate-btn" onclick="generate()" disabled>Generate Map</button>
+    </div>
+  </div>
+
+  <!-- MAP AREA -->
+  <div id="map-area">
+
+    <div id="empty-state">
+      <div class="icon">🗺️</div>
+      <p>Pick a trip folder on the left,<br>select the days you want,<br>then hit <strong>Generate Map</strong>.</p>
+    </div>
+
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <span id="loading-label">Reading GPS tags…</span>
+    </div>
+
+    <div id="map-view">
+      <div id="leaflet-map"></div>
+      <div id="map-footer">
+        <div id="legend"></div>
+        <span id="map-stats"></span>
+        <button id="export-btn" onclick="exportHTML()" disabled>&#8595; Export HTML</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOLDER BROWSER MODAL -->
+<div id="browser-backdrop">
+  <div id="browser-modal">
+    <div id="browser-header">
+      <button id="browser-up" onclick="browserUp()">&#8593; Up</button>
+      <span id="browser-path"></span>
+      <button id="browser-cancel" onclick="closeBrowser()">&#10005;</button>
+    </div>
+    <div id="browser-list"></div>
+    <div id="browser-footer">
+      <button id="browser-select" onclick="selectParentFolder()">Use this folder</button>
+      <span id="browser-cur"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/map-generator/api';
+  let browserPath = '';
+  let parentFolder = '';
+
+  // Leaflet state
+  let map = null;
+  let markersLayer = null;
+  let lastColors = {};
+
+  // DOT_HEX must match Python's _DOT_HEX
+  const DOT_HEX = ['#E53935','#1976D2','#388E3C','#F57C00','#7B1FA2','#0097A7','#C2185B','#F9A825'];
+
+  // ─── FOLDER BROWSER ───────────────────────────────────────────
+  async function openBrowser() {
+    document.getElementById('browser-backdrop').classList.add('open');
+    document.getElementById('browser-list').innerHTML =
+      '<div style="padding:20px 16px;color:#555;font-size:13px;">Loading…</div>';
+    await browserNavigate(parentFolder || '/Users/jere/Desktop/travelBLog');
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-backdrop').classList.remove('open');
+  }
+
+  async function browserNavigate(path) {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) return;
+    browserPath = data.path;
+    document.getElementById('browser-path').textContent = data.path;
+    document.getElementById('browser-cur').textContent = data.path.split('/').pop() || '/';
+    document.getElementById('browser-up').disabled = !data.parent;
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '';
+    if (!data.entries.length) {
+      list.innerHTML = '<div style="padding:20px 16px;color:#444;font-size:13px;">No subfolders</div>';
+      return;
+    }
+    data.entries.forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'browser-item';
+      row.innerHTML = `<span>📁</span><span class="b-name">${e.name}</span>
+        ${e.heic_count > 0 ? `<span class="b-badge">${e.heic_count} photos</span>` : ''}`;
+      row.addEventListener('click', () => browserNavigate(e.path));
+      list.appendChild(row);
+    });
+  }
+
+  async function browserUp() {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(browserPath)}`);
+    const data = await res.json();
+    if (data.parent) await browserNavigate(data.parent);
+  }
+
+  async function selectParentFolder() {
+    closeBrowser();
+    await loadFolderList(browserPath);
+  }
+
+  // ─── FOLDER LIST ──────────────────────────────────────────────
+  async function loadFolderList(path) {
+    parentFolder = path;
+    document.getElementById('parent-label').textContent = path.split('/').pop() || path;
+
+    const res = await fetch(`${API}/subfolders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: path })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    const empty = document.getElementById('folder-list-empty');
+    const list = document.getElementById('folder-list');
+
+    if (!data.folders.length) {
+      empty.textContent = 'No HEIC photos found in this folder or its subfolders.';
+      empty.style.display = 'block';
+      list.innerHTML = '';
+      document.getElementById('generate-btn').disabled = true;
+      return;
+    }
+
+    empty.style.display = 'none';
+    list.innerHTML = '';
+
+    // Assign preview colors to rows (sorted order matches server)
+    const sortedNames = [...data.folders].map(f => f.name).sort();
+    const colorMap = {};
+    sortedNames.forEach((n, i) => colorMap[n] = DOT_HEX[i % DOT_HEX.length]);
+
+    data.folders.forEach(f => {
+      const color = colorMap[f.name] || '#888';
+      const row = document.createElement('label');
+      row.className = 'folder-row';
+      row.innerHTML = `
+        <input type="checkbox" checked data-path="${f.path}" data-label="${f.name}">
+        <div class="folder-swatch" style="background:${color}"></div>
+        <span class="folder-row-name" title="${f.name}">${f.name}</span>
+        <span class="folder-row-count">${f.count}</span>
+      `;
+      list.appendChild(row);
+    });
+
+    document.getElementById('generate-btn').disabled = false;
+  }
+
+  function selectAll() {
+    document.querySelectorAll('#folder-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+  }
+  function selectNone() {
+    document.querySelectorAll('#folder-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+  }
+
+  // ─── LEAFLET MAP ──────────────────────────────────────────────
+  function initMap() {
+    if (!map) {
+      map = L.map('leaflet-map', { preferCanvas: true, zoomControl: true })
+              .setView([48.0, 10.0], 5);
+      {{ tile_js | safe }}
+      markersLayer = L.layerGroup().addTo(map);
+    } else {
+      map.invalidateSize();
+    }
+  }
+
+  function plotGroups(groups, colors) {
+    markersLayer.clearLayers();
+    const bounds = L.latLngBounds();
+
+    Object.entries(groups).forEach(([label, pts]) => {
+      const color = colors[label] || '#888';
+      pts.forEach(([lat, lon]) => {
+        L.circleMarker([lat, lon], {
+          radius: 6,
+          fillColor: color,
+          color: 'rgba(255,255,255,0.9)',
+          weight: 1.5,
+          opacity: 1,
+          fillOpacity: 0.85,
+        }).bindPopup(`<b>${label}</b>`).addTo(markersLayer);
+        bounds.extend([lat, lon]);
+      });
+    });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: false });
+    }
+  }
+
+  // ─── GENERATE ─────────────────────────────────────────────────
+  async function generate() {
+    const checkboxes = [...document.querySelectorAll('#folder-list input[type="checkbox"]:checked')];
+    if (!checkboxes.length) { alert('Select at least one folder.'); return; }
+
+    const folders = checkboxes.map(cb => ({ path: cb.dataset.path, label: cb.dataset.label }));
+
+    document.getElementById('generate-btn').disabled = true;
+    showState('loading');
+
+    let data;
+    try {
+      const res = await fetch(`${API}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders }),
+      });
+      data = await res.json();
+    } catch (e) {
+      showState('empty');
+      alert('Network error');
+      document.getElementById('generate-btn').disabled = false;
+      return;
+    }
+
+    document.getElementById('generate-btn').disabled = false;
+
+    if (!data.ok) {
+      showState('empty');
+      alert(data.error || 'Error generating map');
+      return;
+    }
+
+    lastColors = data.colors;
+
+    // Show map view first, then init Leaflet (must be visible before init)
+    showState('map');
+    requestAnimationFrame(() => {
+      initMap();
+      plotGroups(data.groups, data.colors);
+    });
+
+    // Legend
+    const legend = document.getElementById('legend');
+    legend.innerHTML = '';
+    Object.entries(data.colors).forEach(([label, color]) => {
+      const count = (data.groups[label] || []).length;
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<div class="legend-dot" style="background:${color}"></div>
+                        <span>${label} <span style="color:#3a3a3a">(${count})</span></span>`;
+      legend.appendChild(item);
+    });
+
+    document.getElementById('map-stats').textContent = `${data.total} GPS points`;
+    document.getElementById('export-btn').disabled = false;
+  }
+
+  // ─── EXPORT HTML ──────────────────────────────────────────────
+  async function exportHTML() {
+    const btn = document.getElementById('export-btn');
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch(`${API}/export`, { method: 'POST' });
+      if (!res.ok) { alert('Export failed'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'trip_map.html'; a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      btn.textContent = '↓ Export HTML';
+      btn.disabled = false;
+    }
+  }
+
+  function showState(s) {
+    document.getElementById('empty-state').style.display   = s === 'empty'   ? 'flex' : 'none';
+    document.getElementById('loading-state').style.display = s === 'loading'  ? 'flex' : 'none';
+    document.getElementById('map-view').style.display      = s === 'map'      ? 'flex' : 'none';
+  }
+
+  // ─── KEYBOARD / MODAL CLOSE ───────────────────────────────────
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBrowser(); });
+  document.getElementById('browser-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('browser-backdrop')) closeBrowser();
+  });
+</script>
+</body>
+</html>

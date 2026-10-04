@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Travel Blog Tools</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-size: 28px;
+    font-weight: 600;
+    color: #f0f0f0;
+    letter-spacing: -0.5px;
+  }
+
+  header p {
+    margin-top: 6px;
+    font-size: 14px;
+    color: #555;
+  }
+
+  .tools-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    max-width: 720px;
+  }
+
+  .tool-card {
+    background: #171717;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    padding: 28px 24px;
+    width: 200px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    transition: background 0.15s, border-color 0.15s, transform 0.12s;
+    cursor: pointer;
+  }
+
+  .tool-card:hover {
+    background: #1f1f1f;
+    border-color: #3a3a3a;
+    transform: translateY(-2px);
+  }
+
+  .tool-card .icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .tool-card .name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #ddd;
+  }
+
+  .tool-card .desc {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.5;
+  }
+
+  .tool-card.coming-soon {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Travel Blog Tools</h1>
+  <p>Pick a tool to get started</p>
+</header>
+
+<div class="tools-grid">
+
+  <a class="tool-card" href="/photo-tagger">
+    <span class="icon">📷</span>
+    <span class="name">Photo Tagger</span>
+    <span class="desc">Browse HEIC photos and tag them for Me, Blog, or Hidden.</span>
+  </a>
+
+  <a class="tool-card" href="/map-generator">
+    <span class="icon">🗺️</span>
+    <span class="name">Map Generator</span>
+    <span class="desc">Plot GPS dots from a trip folder onto a beautiful map and export as PNG.</span>
+  </a>
+
+  <a class="tool-card" href="/day-splitter">
+    <span class="icon">📅</span>
+    <span class="name">Day Splitter</span>
+    <span class="desc">Split a folder of photos into per-day subfolders using EXIF dates.</span>
+  </a>
+
+  <a class="tool-card" href="/blogpost-skeleton">
+    <span class="icon">📝</span>
+    <span class="name">Blogpost Skeleton</span>
+    <span class="desc">Pick tagged trip folders and generate a map + a blog post draft from your notes and starred photos.</span>
+  </a>
+
+  <a class="tool-card" href="/phone-import">
+    <span class="icon">📱</span>
+    <span class="name">Phone Import</span>
+    <span class="desc">Copy photos &amp; videos from your plugged-in iPhone by date range, grouped by day.</span>
+  </a>
+
+  <a class="tool-card" href="/prune-photos">
+    <span class="icon">🧹</span>
+    <span class="name">Prune Photos</span>
+    <span class="desc">Find images in a vault that no markdown note references, and move them to Trash.</span>
+  </a>
+
+  <div class="tool-card coming-soon">
+    <span class="icon">✦</span>
+    <span class="name">Coming soon</span>
+    <span class="desc">More tools on the way.</span>
+  </div>
+
+</div>
+
+</body>
+</html>

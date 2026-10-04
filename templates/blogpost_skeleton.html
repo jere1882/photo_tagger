@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blogpost Skeleton</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────────── */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  #home-btn {
+    background: none; border: none; color: #555; font-size: 13px;
+    cursor: pointer; padding: 4px 6px; border-radius: 5px; white-space: nowrap;
+  }
+  #home-btn:hover { background: #222; color: #aaa; }
+  .bar-sep { width: 1px; height: 18px; background: #2a2a2a; }
+
+  /* ─── LAYOUT ──────────────────────────────────────────────── */
+  #layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ─── SIDEBAR ─────────────────────────────────────────────── */
+  #sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background: #141414;
+    border-right: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #browse-area {
+    padding: 12px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #browse-btn {
+    background: #2d2d2d; border: 1px solid #444; border-radius: 6px;
+    color: #ccc; font-size: 12px; padding: 6px 12px; cursor: pointer; width: 100%;
+    text-align: left;
+  }
+  #browse-btn:hover { background: #3a3a3a; color: #fff; }
+
+  #parent-label {
+    font-size: 10px;
+    color: #444;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #folder-list-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 0;
+  }
+
+  #folder-list-empty {
+    padding: 20px 14px;
+    font-size: 12px;
+    color: #3a3a3a;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .folder-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: background 0.08s;
+  }
+  .folder-row:hover { background: #1c1c1c; }
+
+  .folder-row input[type="checkbox"] {
+    accent-color: #4FC3F7;
+    width: 14px; height: 14px;
+    flex-shrink: 0; cursor: pointer;
+  }
+
+  .folder-row-name {
+    flex: 1; font-size: 12px; color: #bbb;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .folder-row:hover .folder-row-name { color: #ddd; }
+
+  .folder-row-count { font-size: 10px; color: #444; white-space: nowrap; flex-shrink: 0; }
+
+  .tag-done {
+    font-size: 9px; color: #4caf50; background: #0a2010;
+    border: 1px solid #2e7d32; border-radius: 9px; padding: 1px 6px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .tag-partial {
+    font-size: 9px; color: #ff9800; background: #1a1000;
+    border: 1px solid #7a4800; border-radius: 9px; padding: 1px 6px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  #sidebar-footer {
+    border-top: 1px solid #222;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #select-actions { display: flex; gap: 6px; }
+
+  .small-btn {
+    background: #222; border: 1px solid #333; border-radius: 5px;
+    color: #666; font-size: 11px; padding: 4px 10px; cursor: pointer; flex: 1;
+  }
+  .small-btn:hover { color: #aaa; background: #2a2a2a; }
+
+  #generate-btn {
+    background: #1a4a8a; border: 1px solid #2a6acc; border-radius: 7px;
+    color: #fff; font-size: 13px; font-weight: 600; padding: 9px;
+    cursor: pointer; width: 100%; transition: background 0.12s;
+  }
+  #generate-btn:hover { background: #1f5aa0; }
+  #generate-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* ─── RESULT AREA ─────────────────────────────────────────── */
+  #result-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    background: #111;
+  }
+
+  #empty-state, #loading-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    text-align: center;
+    padding: 40px;
+    gap: 14px;
+  }
+  #empty-state .icon { font-size: 52px; margin-bottom: 4px; }
+  #empty-state p { font-size: 13px; color: #444; line-height: 1.6; }
+
+  .spinner {
+    width: 34px; height: 34px;
+    border: 3px solid #222; border-top-color: #4FC3F7;
+    border-radius: 50%; animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-state { display: none; }
+  #loading-label { font-size: 13px; color: #555; }
+
+  #results-view {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 24px 28px;
+    gap: 18px;
+  }
+
+  #results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  #results-title { font-size: 15px; color: #ddd; font-weight: 600; }
+  #results-stats { font-size: 12px; color: #666; margin-top: 4px; }
+
+  #reveal-btn {
+    background: #222; border: 1px solid #333; border-radius: 6px;
+    color: #ccc; font-size: 12px; padding: 6px 14px; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  #reveal-btn:hover { background: #2a2a2a; color: #fff; }
+
+  .result-section { margin-top: 6px; }
+  .result-section h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #555; margin-bottom: 8px; font-weight: 600;
+  }
+
+  #map-preview {
+    width: 100%;
+    height: 420px;
+    border-radius: 8px;
+    border: 1px solid #222;
+    display: block;
+  }
+  #map-preview-wrap { display: none; }
+
+  #md-preview {
+    background: #161616;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 12px;
+    color: #bbb;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 420px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+
+  /* ─── FOLDER BROWSER MODAL ────────────────────────────────── */
+  #browser-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  #browser-backdrop.open { display: flex; }
+  #browser-modal {
+    background: #1c1c1c; border: 1px solid #333; border-radius: 12px;
+    width: 520px; max-height: 68vh; display: flex; flex-direction: column;
+    overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+  #browser-header {
+    padding: 12px 16px; border-bottom: 1px solid #2a2a2a;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #browser-up {
+    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px;
+    color: #aaa; font-size: 13px; padding: 4px 10px; cursor: pointer;
+  }
+  #browser-up:hover { background: #333; color: #fff; }
+  #browser-up:disabled { opacity: 0.3; cursor: default; }
+  #browser-path {
+    flex: 1; font-size: 11px; color: #555;
+    font-family: 'SF Mono','Menlo',monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    direction: rtl; text-align: left;
+  }
+  #browser-cancel { background: none; border: none; color: #555; font-size: 18px; cursor: pointer; padding: 2px 4px; }
+  #browser-cancel:hover { color: #aaa; }
+  #browser-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+  .browser-item {
+    display: flex; align-items: center; padding: 8px 16px;
+    cursor: pointer; gap: 10px; transition: background 0.08s;
+  }
+  .browser-item:hover { background: #262626; }
+  .browser-item .b-name { flex: 1; font-size: 13px; color: #ddd; }
+  .browser-item .b-badge {
+    font-size: 10px; color: #00b8a9; background: #002d2a;
+    border: 1px solid #007a70; border-radius: 10px; padding: 2px 7px;
+  }
+  #browser-footer {
+    padding: 10px 16px; border-top: 1px solid #2a2a2a;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #browser-select {
+    background: #1a4a8a; border: 1px solid #2a6acc; border-radius: 7px;
+    color: #fff; font-size: 13px; padding: 7px 18px; cursor: pointer; font-weight: 500;
+  }
+  #browser-select:hover { background: #1f5aa0; }
+  #browser-cur { font-size: 11px; color: #555; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <button id="home-btn" onclick="window.location='/'">&#8592; Home</button>
+  <div class="bar-sep"></div>
+  <span style="font-size:13px;color:#555;">Blogpost Skeleton</span>
+</div>
+
+<div id="layout">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="browse-area">
+      <button id="browse-btn" onclick="openBrowser()">📂 Browse trip folder…</button>
+      <div id="parent-label">No folder selected</div>
+    </div>
+
+    <div id="folder-list-wrap">
+      <div id="folder-list-empty">Browse a trip folder to see its day subfolders.</div>
+      <div id="folder-list"></div>
+    </div>
+
+    <div id="sidebar-footer">
+      <div id="select-actions">
+        <button class="small-btn" onclick="selectAll()">Select all</button>
+        <button class="small-btn" onclick="selectNone()">Clear</button>
+      </div>
+      <button id="generate-btn" onclick="generate()" disabled>Generate Skeleton</button>
+    </div>
+  </div>
+
+  <!-- RESULT AREA -->
+  <div id="result-area">
+
+    <div id="empty-state">
+      <div class="icon">📝</div>
+      <p>Pick a trip folder on the left,<br>select the day folders you want,<br>then hit <strong>Generate Skeleton</strong>.<br><br>
+      This builds <code>blogpost_skeleton.md</code> — a full journal skeleton generated from<br><code>Journal Template.md</code>, pre-filled with trip dates, one heading per day,<br>and your Photo Tagger notes grouped by day. <code>map.html</code> is also built if any<br>selected photo carries GPS.<br><br>
+      ★ Me and ◇ Blog-tagged photos are <strong>copied</strong> (PNG-converted) into<br><code>me_photos/</code> and <code>blog_photos/</code>. ✕ Hidden-tagged photos are<br><strong>moved</strong> out of their day-folders into <code>hidden_photos/</code> — the<br>originals won't be there anymore.</p>
+    </div>
+
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <span id="loading-label">Reading GPS tags and notes…</span>
+    </div>
+
+    <div id="results-view">
+      <div id="results-header">
+        <div>
+          <div id="results-title">Skeleton generated</div>
+          <div id="results-stats"></div>
+        </div>
+        <button id="reveal-btn" onclick="revealInFinder()">Show in Finder</button>
+      </div>
+
+      <div class="result-section" id="map-preview-wrap">
+        <h3>map.html</h3>
+        <iframe id="map-preview" title="Generated trip map"></iframe>
+      </div>
+
+      <div class="result-section">
+        <h3>blogpost_skeleton.md</h3>
+        <div id="md-preview"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOLDER BROWSER MODAL -->
+<div id="browser-backdrop">
+  <div id="browser-modal">
+    <div id="browser-header">
+      <button id="browser-up" onclick="browserUp()">&#8593; Up</button>
+      <span id="browser-path"></span>
+      <button id="browser-cancel" onclick="closeBrowser()">&#10005;</button>
+    </div>
+    <div id="browser-list"></div>
+    <div id="browser-footer">
+      <button id="browser-select" onclick="selectParentFolder()">Use this folder</button>
+      <span id="browser-cur"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/blogpost-skeleton/api';
+  let browserPath = '';
+  let parentFolder = '';
+
+  // ─── FOLDER BROWSER ───────────────────────────────────────────
+  async function openBrowser() {
+    document.getElementById('browser-backdrop').classList.add('open');
+    document.getElementById('browser-list').innerHTML =
+      '<div style="padding:20px 16px;color:#555;font-size:13px;">Loading…</div>';
+    await browserNavigate(parentFolder || '/Users/jere/Desktop/travelBLog');
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-backdrop').classList.remove('open');
+  }
+
+  async function browserNavigate(path) {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) return;
+    browserPath = data.path;
+    document.getElementById('browser-path').textContent = data.path;
+    document.getElementById('browser-cur').textContent = data.path.split('/').pop() || '/';
+    document.getElementById('browser-up').disabled = !data.parent;
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '';
+    if (!data.entries.length) {
+      list.innerHTML = '<div style="padding:20px 16px;color:#444;font-size:13px;">No subfolders</div>';
+      return;
+    }
+    data.entries.forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'browser-item';
+      row.innerHTML = `<span>📁</span><span class="b-name">${e.name}</span>
+        ${e.heic_count > 0 ? `<span class="b-badge">${e.heic_count} photos</span>` : ''}`;
+      row.addEventListener('click', () => browserNavigate(e.path));
+      list.appendChild(row);
+    });
+  }
+
+  async function browserUp() {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(browserPath)}`);
+    const data = await res.json();
+    if (data.parent) await browserNavigate(data.parent);
+  }
+
+  async function selectParentFolder() {
+    closeBrowser();
+    await loadFolderList(browserPath);
+  }
+
+  // ─── FOLDER LIST ──────────────────────────────────────────────
+  async function loadFolderList(path) {
+    parentFolder = path;
+    document.getElementById('parent-label').textContent = path.split('/').pop() || path;
+    showState('empty');
+
+    const res = await fetch(`${API}/subfolders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: path })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    const empty = document.getElementById('folder-list-empty');
+    const list = document.getElementById('folder-list');
+
+    if (!data.folders.length) {
+      empty.textContent = 'No HEIC photos found in this folder or its subfolders.';
+      empty.style.display = 'block';
+      list.innerHTML = '';
+      document.getElementById('generate-btn').disabled = true;
+      return;
+    }
+
+    empty.style.display = 'none';
+    list.innerHTML = '';
+
+    data.folders.forEach(f => {
+      const ts = f.tag_status;
+      let badge = '';
+      if (ts) {
+        badge = ts.tagged >= ts.total
+          ? `<span class="tag-done">✓ tagged</span>`
+          : (ts.tagged > 0 ? `<span class="tag-partial">${ts.tagged}/${ts.total}</span>` : '');
+      }
+      const row = document.createElement('label');
+      row.className = 'folder-row';
+      row.innerHTML = `
+        <input type="checkbox" checked data-path="${f.path}" data-label="${f.name}">
+        <span class="folder-row-name" title="${f.name}">${f.name}</span>
+        ${badge}
+        <span class="folder-row-count">${f.count}</span>
+      `;
+      list.appendChild(row);
+    });
+
+    document.getElementById('generate-btn').disabled = false;
+  }
+
+  function selectAll() {
+    document.querySelectorAll('#folder-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+  }
+  function selectNone() {
+    document.querySelectorAll('#folder-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+  }
+
+  // ─── GENERATE ─────────────────────────────────────────────────
+  async function generate() {
+    const checkboxes = [...document.querySelectorAll('#folder-list input[type="checkbox"]:checked')];
+    if (!checkboxes.length) { alert('Select at least one folder.'); return; }
+    if (!parentFolder) { alert('Pick a trip folder first.'); return; }
+
+    const folders = checkboxes.map(cb => ({ path: cb.dataset.path, label: cb.dataset.label }));
+
+    document.getElementById('generate-btn').disabled = true;
+    showState('loading');
+
+    let data;
+    try {
+      const res = await fetch(`${API}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: parentFolder, folders }),
+      });
+      data = await res.json();
+    } catch (e) {
+      showState('empty');
+      alert('Network error');
+      document.getElementById('generate-btn').disabled = false;
+      return;
+    }
+
+    document.getElementById('generate-btn').disabled = false;
+
+    if (!data.ok) {
+      showState('empty');
+      alert(data.error || 'Error generating skeleton');
+      return;
+    }
+
+    const countryBit = data.countries && data.countries.length ? ` · ${data.countries.join(', ')}` : '';
+    const meBit     = data.me_photo_count     ? ` · ${data.me_photo_count} me photos`            : '';
+    const hiddenBit = data.hidden_photo_count ? ` · ${data.hidden_photo_count} hidden (moved)`    : '';
+    document.getElementById('results-stats').textContent =
+      `${data.unique_days} days · ${data.gps_points} GPS points · ${data.blog_photo_count} blog photos${meBit}${hiddenBit}${countryBit}`;
+
+    const mapWrap = document.getElementById('map-preview-wrap');
+    const mapFrame = document.getElementById('map-preview');
+    if (data.map_path) {
+      mapFrame.src = `${API}/preview-map?parent=${encodeURIComponent(data.parent)}&t=${Date.now()}`;
+      mapWrap.style.display = 'block';
+    } else {
+      mapFrame.src = '';
+      mapWrap.style.display = 'none';
+    }
+
+    const mdRes = await fetch(`${API}/preview-md?parent=${encodeURIComponent(data.parent)}`);
+    document.getElementById('md-preview').textContent = await mdRes.text();
+
+    showState('results');
+  }
+
+  async function revealInFinder() {
+    if (!parentFolder) return;
+    await fetch(`${API}/reveal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parent: parentFolder }),
+    });
+  }
+
+  function showState(s) {
+    document.getElementById('empty-state').style.display   = s === 'empty'   ? 'flex' : 'none';
+    document.getElementById('loading-state').style.display = s === 'loading' ? 'flex' : 'none';
+    document.getElementById('results-view').style.display  = s === 'results' ? 'flex' : 'none';
+  }
+
+  // ─── KEYBOARD / MODAL CLOSE ───────────────────────────────────
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBrowser(); });
+  document.getElementById('browser-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('browser-backdrop')) closeBrowser();
+  });
+</script>
+</body>
+</html>

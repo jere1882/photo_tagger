@@ -1,0 +1,12 @@
+# Local secrets (CARTO basemap key) — see launch.sh
+.env
+
+# Photo/blog content, not code: the vault is ~23GB of notes and media
+Obsidian Vault/
+
+# Local Claude Code permissions
+.claude/settings.local.json
+
+__pycache__/
+*.pyc
+.DS_Store

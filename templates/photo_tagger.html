@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photo Tagger</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────────── */
+  /* Floats over the photo instead of reserving its own row, so tall/vertical
+     photos can use the full viewport height rather than being squeezed by it.
+     The bar itself has no background — only the individual controls do —
+     so it never darkens photo area that isn't under a button/input. */
+  #top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    min-height: 44px;
+  }
+
+  #home-btn {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+  #home-btn:hover { background: rgba(0,0,0,0.4); color: #fff; }
+
+  #divider {
+    width: 1px; height: 18px; flex-shrink: 0;
+    background: rgba(255,255,255,0.3);
+    box-shadow: 0 0 3px rgba(0,0,0,0.8);
+  }
+
+  #folder-input {
+    flex: 1;
+    background: #222;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 10px;
+    outline: none;
+    font-family: 'SF Mono', 'Menlo', monospace;
+  }
+  #folder-input:focus { border-color: #555; color: #fff; }
+
+  .top-btn {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .top-btn:hover { background: #3a3a3a; color: #fff; }
+  .top-btn.active { background: #0a2010; border-color: #2e7d32; color: #4caf50; }
+  .top-btn.active:hover { background: #0f2b16; color: #66d67a; }
+
+  /* Type filter: active = shown, inactive = hidden — opposite sense of
+     other .top-btn.active toggles (which mean "filter engaged"), so it
+     gets its own dimmed-when-off look instead of reusing the green style. */
+  #type-filter { display: flex; gap: 4px; flex-shrink: 0; }
+  .type-btn { padding: 5px 10px; opacity: 0.4; }
+  .type-btn.active { opacity: 1; background: #2d2d2d; border-color: #444; color: #ccc; }
+  .type-btn.active:hover { background: #3a3a3a; color: #fff; }
+
+  #sort-select {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #sort-select:hover { background: #3a3a3a; color: #fff; }
+
+  #counter {
+    font-size: 12px;
+    color: #aaa;
+    white-space: nowrap;
+    min-width: 50px;
+    text-align: right;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+
+  #goto-input {
+    width: 46px;
+    background: #222;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 6px;
+    outline: none;
+    text-align: center;
+    -moz-appearance: textfield;
+  }
+  #goto-input::-webkit-outer-spin-button,
+  #goto-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  #goto-input:focus { border-color: #555; color: #fff; }
+  #goto-input::placeholder { color: #555; }
+
+  #tag-stats {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 0 4px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+  #tag-stats .stat { display: flex; align-items: center; gap: 4px; }
+  #tag-stats .stat-me     { color: #f5c518; }
+  #tag-stats .stat-blog   { color: #00d4c4; }
+  #tag-stats .stat-hidden { color: #e84040; }
+
+  #resume-btn:disabled { opacity: 0.35; cursor: default; }
+
+  #notes-btn { position: relative; }
+  #notes-count-badge {
+    display: inline-block;
+    min-width: 15px;
+    margin-left: 5px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #3a3a3a;
+    color: #ccc;
+    font-size: 10px;
+    line-height: 15px;
+    text-align: center;
+  }
+
+  /* ─── NOTES MODAL ─────────────────────────────────────────── */
+  #notes-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #notes-backdrop.open { display: flex; }
+
+  #notes-modal {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 12px;
+    width: 480px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+
+  #notes-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: #ccc;
+  }
+  #notes-close {
+    background: none; border: none; color: #555; font-size: 18px;
+    cursor: pointer; line-height: 1; padding: 2px 4px;
+  }
+  #notes-close:hover { color: #aaa; }
+
+  #notes-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+
+  .notes-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.08s;
+  }
+  .notes-item:hover { background: #262626; }
+  .notes-item .notes-text { flex: 1; font-size: 13px; color: #ddd; }
+  .notes-item .notes-badge { font-size: 11px; color: #666; white-space: nowrap; }
+
+  #notes-empty { padding: 20px 16px; color: #444; font-size: 13px; }
+
+  /* ─── FOLDER BROWSER MODAL ────────────────────────────────── */
+  #browser-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #browser-backdrop.open { display: flex; }
+
+  #browser-modal {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 12px;
+    width: 540px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+
+  #browser-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-up {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 13px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #browser-up:hover { background: #333; color: #fff; }
+  #browser-up:disabled { opacity: 0.3; cursor: default; }
+
+  #browser-path {
+    flex: 1;
+    font-size: 11px;
+    color: #555;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
+  }
+
+  #browser-cancel {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  #browser-cancel:hover { color: #aaa; }
+
+  #browser-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+
+  .browser-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    gap: 10px;
+    transition: background 0.08s;
+  }
+  .browser-item:hover { background: #262626; }
+  .browser-item .folder-icon { font-size: 16px; flex-shrink: 0; }
+  .browser-item .folder-name { flex: 1; font-size: 13px; color: #ddd; }
+  .browser-item .heic-badge {
+    font-size: 10px;
+    color: #00b8a9;
+    background: #002d2a;
+    border: 1px solid #007a70;
+    border-radius: 10px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .browser-item .tag-done {
+    font-size: 10px;
+    color: #4caf50;
+    background: #0a2010;
+    border: 1px solid #2e7d32;
+    border-radius: 10px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .browser-item .tag-partial {
+    font-size: 10px;
+    color: #ff9800;
+    background: #1a1000;
+    border: 1px solid #7a4800;
+    border-radius: 10px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  #browser-permission-error {
+    padding: 20px 16px;
+    color: #aaa;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  #browser-permission-error a {
+    color: #5b9bd5;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  #browser-footer {
+    padding: 10px 16px;
+    border-top: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  #browser-select {
+    background: #1a4a8a;
+    border: 1px solid #2a6acc;
+    border-radius: 7px;
+    color: #fff;
+    font-size: 13px;
+    padding: 7px 18px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  #browser-select:hover { background: #1f5aa0; }
+  #browser-select:disabled { opacity: 0.35; cursor: default; background: #1a4a8a; }
+
+  #browser-current-label {
+    font-size: 11px;
+    color: #555;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ─── PHOTO AREA ──────────────────────────────────────────── */
+  /* Fills the entire viewport — the top/bottom bars overlay on top of it
+     rather than shrinking it, so the photo always gets full screen space. */
+  #photo-area {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #main-photo {
+    /* No size constraints — browser decodes HEIC at native resolution.
+       We position and scale via JS transform so zooming reveals real pixels. */
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    cursor: zoom-in;
+    will-change: transform;
+    opacity: 0;
+  }
+  #main-photo.visible  { opacity: 1; transition: opacity 0.1s ease; }
+  #main-photo.zoomed   { cursor: grab; }
+  #main-photo.dragging { cursor: grabbing; }
+  #photo-area.cropping, #photo-area.cropping #main-photo { cursor: crosshair; }
+  /* While a crop/straighten selection is being drawn, the top and bottom bars
+     are taken out entirely. They overlay the photo area (which is fixed to the
+     full viewport), so they both hid the outer ~120px of the photo and ate the
+     mousedown that starts a drag — a corner simply couldn't be placed there. */
+  body.selecting #top-bar,
+  body.selecting #bottom-bar { display: none; }
+
+  #crop-rect {
+    position: absolute;
+    z-index: 5;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 0 0 9999px rgba(0,0,0,.45);
+    pointer-events: none;
+  }
+  #crop-bar {
+    position: absolute;
+    top: 58px; left: 50%; transform: translateX(-50%);
+    z-index: 6;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(20,20,22,.92); color: #fff;
+    padding: 8px 12px; border-radius: 10px;
+    font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  #crop-bar button { font-size: 13px; padding: 5px 12px; border-radius: 7px; border: 0; cursor: pointer; }
+  #crop-apply { background: #2e7d32; color: #fff; }
+  #crop-apply:disabled { background: #555; cursor: default; }
+  #crop-cancel { background: #444; color: #fff; }
+  #crop-btn.active { background: #2e7d32; color: #fff; }
+  #frame-btn.active { background: #2e7d32; color: #fff; }
+  #photo-area.persp-mode, #photo-area.persp-mode #main-photo { cursor: crosshair; }
+  #persp-overlay { position: absolute; inset: 0; z-index: 5; pointer-events: none; width: 100%; height: 100%; }
+  #persp-overlay polygon { fill: rgba(46,125,50,.18); stroke: #fff; stroke-width: 1.5; }
+  #persp-overlay circle { fill: #2e7d32; stroke: #fff; stroke-width: 2; cursor: grab; pointer-events: auto; }
+  #persp-overlay circle.dragging { cursor: grabbing; fill: #43a047; }
+  #persp-bar {
+    position: absolute;
+    top: 58px; left: 50%; transform: translateX(-50%);
+    z-index: 6;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(20,20,22,.92); color: #fff;
+    padding: 8px 12px; border-radius: 10px;
+    font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  #persp-bar button { font-size: 13px; padding: 5px 12px; border-radius: 7px; border: 0; cursor: pointer; }
+  #persp-apply { background: #2e7d32; color: #fff; }
+  #persp-apply:disabled { background: #555; cursor: default; }
+  #persp-cancel { background: #444; color: #fff; }
+  #persp-btn.active { background: #2e7d32; color: #fff; }
+  #main-video {
+    /* Height is held short of the viewport so the native controls stay clear
+       of the bottom bar, which overlays the photo area. */
+    position: absolute;
+    z-index: 3;
+    display: none;
+    max-width: 96vw;
+    max-height: calc(100vh - 150px);
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: #000;
+    outline: none;
+  }
+
+  #frame-preview {
+    position: absolute;
+    z-index: 4;
+    max-width: 100%; max-height: 100%;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: #000;
+  }
+  #frame-bar {
+    /* Clear of the bottom action bar: the picker's controls are wide enough
+       that sitting at the very bottom ran them into Copy/Crop/Delete. */
+    position: absolute;
+    bottom: 96px; left: 50%; transform: translateX(-50%);
+    z-index: 6;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(20,20,22,.92); color: #fff;
+    padding: 8px 14px; border-radius: 10px;
+    font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    white-space: nowrap;
+    max-width: min(860px, 94vw);
+  }
+  #frame-scrub { width: 340px; max-width: 46vw; accent-color: #2e7d32; }
+  #frame-scrub:disabled { opacity: 0.4; }
+  #frame-time { font-variant-numeric: tabular-nums; min-width: 96px; white-space: nowrap; }
+  #frame-bar button { font-size: 13px; padding: 5px 12px; border-radius: 7px; border: 0; cursor: pointer; }
+  #frame-play { background: #444; color: #fff; min-width: 34px; }
+  #frame-bar .frame-step { background: #333; color: #ddd; min-width: 26px; padding: 5px 7px; }
+  #frame-bar .frame-step:hover:not(:disabled) { background: #444; color: #fff; }
+  #frame-bar button:disabled { opacity: 0.4; cursor: default; }
+  #frame-save { background: #2e7d32; color: #fff; }
+  #frame-cancel { background: #444; color: #fff; }
+
+  #loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #555;
+    pointer-events: none;
+  }
+
+  #empty-state { text-align: center; color: #444; }
+  #empty-state h2 { font-size: 18px; margin-bottom: 8px; color: #555; }
+  #empty-state p { font-size: 13px; }
+
+  /* ─── NAV ARROWS ──────────────────────────────────────────── */
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.45);
+    border: none;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s, opacity 0.15s;
+    z-index: 10;
+    opacity: 0;
+  }
+  #photo-area:hover .nav-btn { opacity: 1; }
+  .nav-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+  .nav-btn:disabled { opacity: 0 !important; cursor: default; }
+  #prev-btn { left: 12px; }
+  #next-btn { right: 12px; }
+
+  /* ─── BOTTOM BAR ──────────────────────────────────────────── */
+  /* Floats over the photo instead of reserving its own row — see #top-bar.
+     No bar-wide background: buttons/inputs carry their own, and the plain
+     text bits get a shadow instead, so empty space stays fully see-through. */
+  #bottom-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 20;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    min-height: 70px;
+  }
+
+  #photo-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+  #filename-label {
+    font-size: 11px;
+    color: #bbb;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+
+  #date-label {
+    font-size: 13px;
+    color: #eee;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+
+  #gps-row { display: flex; align-items: center; gap: 8px; min-height: 18px; }
+
+  #gps-link {
+    font-size: 12px;
+    color: #79b8f0;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+  #gps-link:hover { color: #a3d0ff; text-decoration: underline; }
+  #gps-link.hidden { display: none; }
+
+  #geocode-btn {
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;
+    color: #ccc; font-size: 11px; padding: 2px 8px; cursor: pointer;
+    white-space: nowrap; transition: color 0.1s, border-color 0.1s, background 0.1s;
+  }
+  #geocode-btn:hover:not(:disabled) { color: #fff; border-color: #777; background: rgba(0,0,0,0.6); }
+  #geocode-btn:disabled { opacity: 0.5; cursor: default; }
+  #geocode-btn.hidden { display: none; }
+
+  #place-label {
+    font-size: 12px; color: #a9c4dd; min-height: 15px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
+  }
+
+  #note-input {
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    border-radius: 5px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 5px 9px;
+    outline: none;
+    width: 100%;
+  }
+  #note-input::placeholder { color: #4a4a4a; }
+  #note-input:focus { border-color: #555; color: #fff; }
+
+  /* ─── TAG BUTTONS ─────────────────────────────────────────── */
+  #tag-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .tag-btn {
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1e1e1e;
+    color: #666;
+    font-size: 14px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.08s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 72px;
+  }
+  .tag-btn:hover { background: #2a2a2a; color: #aaa; border-color: #444; }
+  .tag-btn:active { transform: scale(0.95); }
+  .tag-btn .key-hint { font-size: 9px; opacity: 0.45; letter-spacing: 0.5px; }
+
+  .tag-btn.active-me     { background: #2d2200; color: #f5c518; border-color: #8a6d00; }
+  .tag-btn.active-blog   { background: #002d2a; color: #00d4c4; border-color: #007a70; }
+  .tag-btn.active-hidden { background: #2d0808; color: #e84040; border-color: #8a1a1a; }
+
+  #delete-btn {
+    border: 1px solid #3a1a1a;
+    border-radius: 8px;
+    background: #1e1414;
+    color: #5a3030;
+    font-size: 14px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  #delete-btn:hover { background: #2d0808; color: #e84040; border-color: #8a1a1a; }
+
+  /* ─── COPY TO CLIPBOARD ─────────────────────────────────────── */
+  #copy-btn {
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1e1e1e;
+    color: #888;
+    font-size: 14px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  #copy-btn:hover { background: #2a2a2a; color: #ddd; border-color: #444; }
+  #copy-btn:disabled { opacity: 0.5; cursor: default; }
+
+  #move-btn {
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1e1e1e;
+    color: #888;
+    font-size: 14px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  #move-btn:hover { background: #12202d; color: #5b9bd5; border-color: #2a6acc; }
+
+  #ctx-menu {
+    position: fixed;
+    z-index: 100;
+    display: none;
+    min-width: 180px;
+    background: #1c1c1c;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  }
+  #ctx-menu.open { display: block; }
+  .ctx-item {
+    padding: 7px 12px;
+    font-size: 13px;
+    color: #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ctx-item:hover { background: #2f2f2f; color: #fff; }
+  .ctx-sep { height: 1px; background: #333; margin: 4px 8px; }
+
+  #toast {
+    position: fixed;
+    bottom: 96px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    background: #1c1c1c;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    color: #ddd;
+    font-size: 13px;
+    padding: 8px 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #toast.visible { opacity: 1; }
+  #toast.error { color: #e84040; border-color: #8a1a1a; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <button id="home-btn" onclick="window.location='/'">&#8592; Home</button>
+  <div id="divider"></div>
+  <button class="top-btn" onclick="openBrowser()">Browse…</button>
+  <input
+    id="folder-input"
+    type="text"
+    placeholder="Paste folder path here…"
+    spellcheck="false"
+    autocomplete="off"
+  >
+  <button class="top-btn" onclick="loadFolder()">Open</button>
+  <span id="counter"></span>
+  <input id="goto-input" type="number" min="1" placeholder="#" title="Jump to photo number (Enter)">
+  <div id="tag-stats">
+    <span class="stat stat-me">&#9733; <span id="stat-me-count">0</span></span>
+    <span class="stat stat-blog">&#9671; <span id="stat-blog-count">0</span></span>
+    <span class="stat stat-hidden">&#10005; <span id="stat-hidden-count">0</span></span>
+  </div>
+  <button class="top-btn" id="resume-btn" onclick="jumpToLastTagged()" disabled title="Jump to the last photo you tagged">Resume</button>
+  <div id="type-filter" title="Show/hide photo formats">
+    <button class="top-btn type-btn active" id="type-btn-heic" onclick="toggleTypeFilter('heic')">HEIC</button>
+    <button class="top-btn type-btn active" id="type-btn-jpg" onclick="toggleTypeFilter('jpg')">JPG</button>
+    <button class="top-btn type-btn active" id="type-btn-png" onclick="toggleTypeFilter('png')">PNG</button>
+    <button class="top-btn type-btn active" id="type-btn-mp4" onclick="toggleTypeFilter('mp4')">MP4</button>
+  </div>
+  <button class="top-btn" id="tagged-only-btn" onclick="toggleTaggedOnly()" title="Show only photos with at least one tag (Me/Blog/Hidden)">Tagged only</button>
+  <select id="sort-select" onchange="changeSortMode(this.value)" title="Photo order">
+    <option value="date">Sort: Date</option>
+    <option value="filename">Sort: Filename</option>
+  </select>
+  <button class="top-btn" id="notes-btn" onclick="openNotes()">Notes<span id="notes-count-badge">0</span></button>
+</div>
+
+<!-- NOTES MODAL -->
+<div id="notes-backdrop">
+  <div id="notes-modal">
+    <div id="notes-header">
+      <span>Notes so far</span>
+      <button id="notes-close" onclick="closeNotes()">&#10005;</button>
+    </div>
+    <div id="notes-list"></div>
+  </div>
+</div>
+
+<!-- FOLDER BROWSER MODAL -->
+<div id="browser-backdrop">
+  <div id="browser-modal">
+    <div id="browser-header">
+      <button id="browser-up" onclick="browserUp()">&#8593; Up</button>
+      <span id="browser-path"></span>
+      <button id="browser-cancel" onclick="closeBrowser()">&#10005;</button>
+    </div>
+    <div id="browser-list"></div>
+    <div id="browser-footer">
+      <button id="browser-select" onclick="selectCurrentFolder()">Open this folder</button>
+      <span id="browser-current-label"></span>
+    </div>
+  </div>
+</div>
+
+<!-- PHOTO AREA -->
+<div id="photo-area">
+  <div id="loading-overlay" style="display:none">Loading…</div>
+  <div id="empty-state">
+    <h2>No folder loaded</h2>
+    <p>Click <strong>Browse…</strong> or paste a folder path above.</p>
+  </div>
+  <img id="main-photo" src="" alt="" onload="onPhotoLoaded()">
+  <video id="main-video" controls playsinline preload="metadata"></video>
+  <img id="frame-preview" style="display:none" alt="">
+  <div id="frame-bar" style="display:none">
+    <button id="frame-play" onclick="frameTogglePlay()" title="Play / pause (Space)">&#9654;</button>
+    <button class="frame-step" onclick="frameStep(-1)" title="Previous frame (←)">&#8249;</button>
+    <input id="frame-scrub" type="range" min="0" max="0" value="0" step="1">
+    <button class="frame-step" onclick="frameStep(1)" title="Next frame (→)">&#8250;</button>
+    <span id="frame-time">0.00s</span>
+    <button id="frame-save" onclick="saveFrame()">&#10003; Save frame</button>
+    <button id="frame-cancel" onclick="toggleFrameMode(false)">Cancel</button>
+  </div>
+  <div id="crop-rect" style="display:none"></div>
+  <div id="crop-bar" style="display:none">
+    <span id="crop-dims">Draw a rectangle over the photo</span>
+    <button id="crop-apply" onclick="applyCrop()" disabled>&#10003; Save crop</button>
+    <button id="crop-cancel" onclick="toggleCropMode(false)">Cancel</button>
+  </div>
+  <svg id="persp-overlay" style="display:none">
+    <polygon id="persp-poly" points=""></polygon>
+    <circle class="persp-handle" data-i="0" r="7" cx="-99" cy="-99" style="display:none"></circle>
+    <circle class="persp-handle" data-i="1" r="7" cx="-99" cy="-99" style="display:none"></circle>
+    <circle class="persp-handle" data-i="2" r="7" cx="-99" cy="-99" style="display:none"></circle>
+    <circle class="persp-handle" data-i="3" r="7" cx="-99" cy="-99" style="display:none"></circle>
+  </svg>
+  <div id="persp-bar" style="display:none">
+    <span id="persp-hint">Click 4 corners of the region to straighten</span>
+    <button id="persp-apply" onclick="applyPerspectiveCrop()" disabled>&#10003; Save straightened</button>
+    <button id="persp-cancel" onclick="togglePerspectiveMode(false)">Cancel</button>
+  </div>
+  <button class="nav-btn" id="prev-btn" onclick="navigate(-1)" disabled>&#8249;</button>
+  <button class="nav-btn" id="next-btn" onclick="navigate(1)" disabled>&#8250;</button>
+</div>
+
+<!-- RIGHT-CLICK MENU (photo area) -->
+<div id="ctx-menu">
+  <div class="ctx-item ctx-photo-only" onclick="copyPhoto()">&#10697; Copy image as PNG</div>
+  <div class="ctx-item" onclick="openMoveBrowser()">&#128194; Move to&hellip;</div>
+  <div class="ctx-sep ctx-photo-only"></div>
+  <div class="ctx-item ctx-photo-only" onclick="rotatePhoto(90)">&#8635; Rotate 90&deg; right</div>
+  <div class="ctx-item ctx-photo-only" onclick="rotatePhoto(180)">&#8635; Rotate 180&deg;</div>
+  <div class="ctx-item ctx-photo-only" onclick="rotatePhoto(270)">&#8634; Rotate 90&deg; left</div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- BOTTOM BAR -->
+<div id="bottom-bar">
+  <div id="photo-info">
+    <span id="filename-label"></span>
+    <span id="date-label"></span>
+    <div id="gps-row">
+      <a id="gps-link" href="#" target="_blank" class="hidden">&#128205; <span id="gps-coords"></span></a>
+      <button id="geocode-btn" class="hidden" onclick="findPlace()">Find place</button>
+    </div>
+    <span id="place-label"></span>
+    <input
+      id="note-input"
+      type="text"
+      placeholder="Note this landmark/place…"
+      spellcheck="true"
+      autocomplete="off"
+    >
+  </div>
+  <button id="copy-btn" onclick="copyPhoto()" title="Copy image to clipboard as PNG (C)">&#10697; Copy</button>
+  <button id="crop-btn" onclick="toggleCropMode()" title="Draw a rectangle to save a cropped copy (X)">&#9986; Crop</button>
+  <button id="persp-btn" onclick="togglePerspectiveMode()" title="Pick 4 corners and straighten them into a rectangle (P)">&#9635; Straighten</button>
+  <button id="frame-btn" onclick="toggleFrameMode()" title="Pick a frame from the Live Photo video (V)">&#9654; Frame</button>
+  <button id="move-btn" onclick="openMoveBrowser()" title="Move this photo to another folder, tags included (M)">&#128194; Move to&hellip;</button>
+  <button id="delete-btn" onclick="deletePhoto()" title="Move to Trash (⌫)">&#128465; Delete</button>
+  <div id="tag-buttons">
+    <button class="tag-btn" id="btn-me"     onclick="toggleTag('me')">
+      <span>&#9733; Me</span>
+      <span class="key-hint">KEY 1</span>
+    </button>
+    <button class="tag-btn" id="btn-blog"   onclick="toggleTag('blog')">
+      <span>&#9671; Blog</span>
+      <span class="key-hint">KEY 2</span>
+    </button>
+    <button class="tag-btn" id="btn-hidden" onclick="toggleTag('hidden')">
+      <span>&#10005; Hidden</span>
+      <span class="key-hint">KEY 3</span>
+    </button>
+  </div>
+</div>
+
+<script>
+  const API = '/photo-tagger/api';
+  let allPhotos = [], photos = [], idx = 0, browserPath = '', taggedOnly = false;
+  // The folder browser doubles as the destination picker for "Move to…":
+  // browserMode decides what its footer button does with the browsed folder.
+  let browserMode = 'open', movePhotoName = '', currentFolder = '';
+  let typeFilter = { heic: true, jpg: true, png: true, mp4: true };
+  const PHOTO_TYPES = ['heic', 'jpg', 'png', 'mp4'];
+
+  function extCategory(filename) {
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg') return 'jpg';
+    if (ext === 'png') return 'png';
+    if (ext === 'mp4') return 'mp4';
+    return 'heic';
+  }
+
+  // MP4 clips are tagged/noted/moved/deleted like stills, but the pixel tools
+  // (crop, straighten, copy as PNG, Live Photo frames) don't apply to them.
+  function isVideoItem(p) { return !!(p && p.kind === 'video'); }
+  function currentIsVideo() { return isVideoItem(photos[idx]); }
+  let sortMode = localStorage.getItem('pt-sort-mode') === 'filename' ? 'filename' : 'date';
+
+  function isTagged(p) {
+    return !!(p.tags && (p.tags.me || p.tags.blog || p.tags.hidden));
+  }
+
+  // ─── SORT MODE ──────────────────────────────────────────────────
+  // The API returns photos in date order (true UTC instant, so photos taken
+  // on a different timezone still land in real chronology). "Filename"
+  // re-sorts alphabetically on the client.
+  function sortAllPhotos() {
+    if (sortMode === 'filename') {
+      allPhotos.sort((a, b) => a.filename.localeCompare(b.filename));
+    } else {
+      allPhotos.sort((a, b) =>
+        (a.sort_key === null) - (b.sort_key === null) ||
+        (a.sort_key || '').localeCompare(b.sort_key || '') ||
+        a.filename.localeCompare(b.filename));
+    }
+  }
+
+  function changeSortMode(mode) {
+    sortMode = mode;
+    localStorage.setItem('pt-sort-mode', mode);
+    if (!allPhotos.length) return;
+    sortAllPhotos();
+    applyFilter(true);
+  }
+
+  async function init() {
+    document.getElementById('sort-select').value = sortMode;
+    try {
+      const res = await fetch(`${API}/status`);
+      const { folder } = await res.json();
+      if (folder) {
+        currentFolder = folder;
+        document.getElementById('folder-input').value = folder;
+        await fetchPhotos();
+      }
+    } catch (e) { console.warn('init failed:', e); }
+  }
+
+  // ─── FOLDER BROWSER ───────────────────────────────────────────
+  async function openBrowser(mode = 'open') {
+    browserMode = mode;
+    document.getElementById('browser-backdrop').classList.add('open');
+    document.getElementById('browser-list').innerHTML =
+      '<div style="padding:20px 16px;color:#555;font-size:13px;">Loading…</div>';
+    const current = currentFolder || document.getElementById('folder-input').value.trim();
+    let start = current || '/Users/jere/Desktop';
+    // When moving, start a level up: the folder the photo belongs in is almost
+    // always a sibling of the one it was misfiled into.
+    if (mode === 'move' && current) {
+      try {
+        const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(current)}`);
+        const data = await res.json();
+        if (data.parent) start = data.parent;
+      } catch (e) { /* fall back to the current folder */ }
+    }
+    await browserNavigate(start);
+  }
+
+  // Opens the same browser as a destination picker for the photo on screen.
+  function openMoveBrowser() {
+    if (!photos.length) return;
+    movePhotoName = photos[idx].filename;
+    openBrowser('move');
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-backdrop').classList.remove('open');
+    browserMode = 'open';
+  }
+
+  async function browserNavigate(path) {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) return;
+    browserPath = data.path;
+    document.getElementById('browser-path').textContent = data.path;
+    document.getElementById('browser-up').disabled = !data.parent;
+    updateBrowserFooter(data.path);
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '';
+
+    if (data.permission_error) {
+      list.innerHTML = `<div id="browser-permission-error">
+        ⚠️ macOS blocked access to this folder.<br>
+        Fix: <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>
+        → click <strong>+</strong> → add <strong>Travel Blog.app</strong><br><br>
+        <a onclick="fetch('/open-privacy-settings')">Open System Settings now</a>
+      </div>`;
+      return;
+    }
+    if (data.entries.length === 0) {
+      list.innerHTML = '<div style="padding:20px 16px;color:#444;font-size:13px;">No subfolders here</div>';
+      return;
+    }
+    data.entries.forEach(entry => {
+      const ts = entry.tag_status;
+      let tagBadge = '';
+      if (ts) {
+        if (ts.tagged >= ts.total) {
+          tagBadge = `<span class="tag-done">✓ tagged</span>`;
+        } else if (ts.tagged > 0) {
+          tagBadge = `<span class="tag-partial">${ts.tagged}/${ts.total}</span>`;
+        }
+      }
+      const row = document.createElement('div');
+      row.className = 'browser-item';
+      row.innerHTML = `
+        <span class="folder-icon">&#128193;</span>
+        <span class="folder-name">${entry.name}</span>
+        ${tagBadge}
+        ${entry.heic_count > 0 ? `<span class="heic-badge">${entry.heic_count} photos</span>` : ''}
+      `;
+      row.addEventListener('click', () => browserNavigate(entry.path));
+      list.appendChild(row);
+    });
+  }
+
+  // Footer text/state depends on the mode: open a folder for tagging, or move
+  // the current photo into it (never into the folder it already lives in).
+  function updateBrowserFooter(path) {
+    const name = path.split('/').pop() || '/';
+    const btn = document.getElementById('browser-select');
+    const label = document.getElementById('browser-current-label');
+    if (browserMode === 'move') {
+      const sameFolder = path === currentFolder;
+      btn.textContent = 'Move here';
+      btn.disabled = sameFolder;
+      label.textContent = sameFolder
+        ? `${movePhotoName} is already in this folder`
+        : `${movePhotoName} → ${name}`;
+    } else {
+      btn.textContent = 'Open this folder';
+      btn.disabled = false;
+      label.textContent = name;
+    }
+  }
+
+  async function browserUp() {
+    const res = await fetch(`${API}/listdirs?path=${encodeURIComponent(browserPath)}`);
+    const data = await res.json();
+    if (data.parent) await browserNavigate(data.parent);
+  }
+
+  async function selectCurrentFolder() {
+    if (browserMode === 'move') { await moveCurrentPhoto(); return; }
+    closeBrowser();
+    document.getElementById('folder-input').value = browserPath;
+    await loadFolder();
+  }
+
+  // ─── MOVE TO ANOTHER FOLDER ───────────────────────────────────
+  // Moves the file (and its Live Photo MOV) into the browsed folder; the
+  // backend also carries any me/blog/hidden tags and note into that folder's
+  // _ratings.json, so tagging work survives the re-filing.
+  async function moveCurrentPhoto() {
+    const target = browserPath;
+    if (!movePhotoName || target === currentFolder) return;
+    const btn = document.getElementById('browser-select');
+    btn.disabled = true;
+    btn.textContent = 'Moving…';
+    let data;
+    try {
+      const res = await fetch(`${API}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: movePhotoName, target })
+      });
+      data = await res.json();
+    } catch (e) {
+      data = { error: 'Move failed — network/server error' };
+    }
+    btn.disabled = false;
+    updateBrowserFooter(target);
+    if (!data.ok) { showToast(data.error || 'Move failed', 4000, true); return; }
+    const moved = movePhotoName;
+    closeBrowser();
+    dropPhotoFromView(moved);
+    const folderName = (data.target || target).split('/').pop() || target;
+    let msg = `Moved ${moved} → ${folderName}`;
+    if (data.renamed) msg += ` (renamed ${data.filename})`;
+    if (data.tags_moved) msg += ' · tags moved too';
+    if (data.warning) showToast(`${msg} — ${data.warning}`, 6000, true);
+    else showToast(msg, 3000);
+  }
+
+  // ─── FOLDER LOADING ───────────────────────────────────────────
+  async function loadFolder() {
+    const path = document.getElementById('folder-input').value.trim();
+    if (!path) return;
+    document.getElementById('folder-input').blur();
+    const res = await fetch(`${API}/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: path })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    await fetchPhotos();
+  }
+
+  async function fetchPhotos() {
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('main-photo').classList.remove('visible');
+    const res = await fetch(`${API}/photos`);
+    const data = await res.json();
+    allPhotos = data.photos || [];
+    if (data.folder) currentFolder = data.folder;
+    sortAllPhotos();
+    document.getElementById('loading-overlay').style.display = 'none';
+    if (allPhotos.length === 0) {
+      photos = [];
+      updateStats();
+      updateNotesBadge();
+      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('empty-state').innerHTML = '<h2>No photos found</h2><p>Check the folder path.</p>';
+      document.getElementById('counter').textContent = '';
+      return;
+    }
+    applyFilter(true);
+  }
+
+  // ─── TAGGED-ONLY + TYPE FILTERS ───────────────────────────────
+  function toggleTaggedOnly() {
+    taggedOnly = !taggedOnly;
+    document.getElementById('tagged-only-btn').classList.toggle('active', taggedOnly);
+    applyFilter(false);
+  }
+
+  function toggleTypeFilter(type) {
+    typeFilter[type] = !typeFilter[type];
+    document.getElementById(`type-btn-${type}`).classList.toggle('active', typeFilter[type]);
+    applyFilter(false);
+  }
+
+  // Rebuilds `photos` from `allPhotos` honoring the tagged-only and type
+  // filters. When keepPosition is true, tries to stay on the photo currently
+  // being viewed; otherwise starts back at the first photo in the new view.
+  function applyFilter(keepPosition) {
+    const currentFilename = (keepPosition && photos.length) ? photos[idx].filename : null;
+    photos = allPhotos.filter(p =>
+      (!taggedOnly || isTagged(p)) && typeFilter[extCategory(p.filename)]
+    );
+    updateStats();
+    updateNotesBadge();
+    if (photos.length === 0) {
+      document.getElementById('main-photo').classList.remove('visible');
+      document.getElementById('empty-state').style.display = 'flex';
+      const noTypesSelected = PHOTO_TYPES.every(t => !typeFilter[t]);
+      document.getElementById('empty-state').innerHTML = noTypesSelected
+        ? '<h2>No photo types selected</h2><p>Enable at least one format above.</p>'
+        : taggedOnly
+          ? '<h2>No tagged photos yet</h2><p>Tag some photos, or turn off "Tagged only".</p>'
+          : '<h2>No photos left</h2><p>All photos have been removed.</p>';
+      document.getElementById('counter').textContent = '';
+      return;
+    }
+    document.getElementById('empty-state').style.display = 'none';
+    let newIdx = 0;
+    if (currentFilename) {
+      const found = photos.findIndex(p => p.filename === currentFilename);
+      if (found !== -1) newIdx = found;
+    }
+    showPhoto(newIdx);
+  }
+
+  // Jumps to a photo by filename, dropping any active filter first if that
+  // photo wouldn't otherwise be visible (e.g. a note without a tag, or a
+  // format currently hidden by the type filter).
+  function showPhotoByFilename(filename) {
+    let j = photos.findIndex(p => p.filename === filename);
+    if (j === -1) {
+      taggedOnly = false;
+      document.getElementById('tagged-only-btn').classList.remove('active');
+      PHOTO_TYPES.forEach(t => {
+        typeFilter[t] = true;
+        document.getElementById(`type-btn-${t}`).classList.add('active');
+      });
+      photos = allPhotos.slice();
+      updateStats();
+      updateNotesBadge();
+      j = photos.findIndex(p => p.filename === filename);
+    }
+    if (j !== -1) showPhoto(j);
+  }
+
+  // ─── TAG STATS + RESUME ────────────────────────────────────────
+  function updateStats() {
+    let me = 0, blog = 0, hidden = 0;
+    allPhotos.forEach(p => {
+      if (!p.tags) return;
+      if (p.tags.me) me++;
+      if (p.tags.blog) blog++;
+      if (p.tags.hidden) hidden++;
+    });
+    document.getElementById('stat-me-count').textContent = me;
+    document.getElementById('stat-blog-count').textContent = blog;
+    document.getElementById('stat-hidden-count').textContent = hidden;
+    document.getElementById('resume-btn').disabled = (me + blog + hidden) === 0;
+  }
+
+  function jumpToLastTagged() {
+    for (let i = allPhotos.length - 1; i >= 0; i--) {
+      const t = allPhotos[i].tags;
+      if (t && (t.me || t.blog || t.hidden)) { showPhotoByFilename(allPhotos[i].filename); return; }
+    }
+  }
+
+  // ─── ZOOM + PAN (full-resolution) ────────────────────────────
+  // The <img> has no CSS size constraints so Safari decodes HEIC at native
+  // resolution. We use translate+scale transform to fit/zoom — zooming
+  // reveals real pixels rather than upscaling a display-sized texture.
+  (function () {
+    const area = document.getElementById('photo-area');
+    const img  = document.getElementById('main-photo');
+    let scale = 1, tx = 0, ty = 0, fitScale = 1;
+    let dragging = false, lastX = 0, lastY = 0;
+
+    function apply() {
+      img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+      img.classList.toggle('zoomed', scale > fitScale * 1.01);
+      if (window._perspRedraw) window._perspRedraw();
+    }
+
+    function computeFit() {
+      const W = area.clientWidth, H = area.clientHeight;
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      if (!nw || !nh) return;
+      fitScale = Math.min(W / nw, H / nh);
+      scale = fitScale;
+      tx = (W - nw * fitScale) / 2;
+      ty = (H - nh * fitScale) / 2;
+    }
+
+    window._zoomReset = function () {
+      computeFit();
+      apply();
+      img.classList.remove('visible');
+      requestAnimationFrame(() => img.classList.add('visible'));
+    };
+
+    // Scroll to zoom, anchored at cursor.
+    // Uses deltaY magnitude so a fast swipe zooms a lot and a slow one a little —
+    // making zoom-out as easy as zoom-in regardless of how many events fire.
+    area.addEventListener('wheel', e => {
+      if (!img.naturalWidth) return;
+      e.preventDefault();
+      const r  = area.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      // Normalise: trackpad gives pixels (deltaMode=0), mouse wheel gives lines (deltaMode=1)
+      const raw      = e.deltaMode === 1 ? e.deltaY * 20 : e.deltaY;
+      const factor   = Math.exp(-raw * 0.006);
+      const newScale = Math.max(fitScale, Math.min(1.0, scale * factor));
+      if (Math.abs(newScale - scale) < 1e-9) return;
+      tx = mx - (mx - tx) * (newScale / scale);
+      ty = my - (my - ty) * (newScale / scale);
+      scale = newScale;
+      apply();
+    }, { passive: false });
+
+    // Screen (area-relative) point -> native image pixel. transform-origin is
+    // 0 0 and the img sits at the area's top-left, so this inverts the exact
+    // translate()+scale() applied in apply().
+    window._toNative = (sx, sy) => ({ x: (sx - tx) / scale, y: (sy - ty) / scale });
+    window._toScreen = (nx, ny) => ({ x: nx * scale + tx, y: ny * scale + ty });
+
+    // Drag to pan
+    area.addEventListener('mousedown', e => {
+      if (window._cropMode || window._perspMode) return; // crop/perspective overlay owns the drag
+      if (scale <= fitScale * 1.01 || e.button !== 0) return;
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      img.classList.add('dragging'); e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      tx += e.clientX - lastX; ty += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY; apply();
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false; img.classList.remove('dragging');
+    });
+
+    // Double-click: toggle fit ↔ native (1 CSS px per image px)
+    area.addEventListener('dblclick', e => {
+      if (!img.naturalWidth) return;
+      const r  = area.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const targetScale = scale > fitScale * 1.01 ? fitScale : 1.0;
+      img.style.transition = 'transform 0.22s ease';
+      tx = mx - (mx - tx) * (targetScale / scale);
+      ty = my - (my - ty) * (targetScale / scale);
+      scale = targetScale;
+      if (scale === fitScale) { tx = (area.clientWidth - img.naturalWidth * fitScale) / 2; ty = (area.clientHeight - img.naturalHeight * fitScale) / 2; }
+      apply();
+      setTimeout(() => img.style.transition = '', 250);
+    });
+  })();
+
+  // ─── CROP (draw rectangle → save adjacent full-res HEIC) ──────
+  (function () {
+    const area = document.getElementById('photo-area');
+    const rect = document.getElementById('crop-rect');
+    const bar  = document.getElementById('crop-bar');
+    const dims = document.getElementById('crop-dims');
+    const apply = document.getElementById('crop-apply');
+    let drawing = false, sx = 0, sy = 0, sel = null;   // sel: area-relative {l,t,w,h}
+
+    function areaXY(e) {
+      const r = area.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    window.toggleCropMode = function (force) {
+      const on = force === undefined ? !window._cropMode : force;
+      if (on && window._perspMode) window.togglePerspectiveMode(false);
+      window._cropMode = on;
+      area.classList.toggle('cropping', on);
+      document.body.classList.toggle('selecting', on);   // uncover the whole photo
+      document.getElementById('crop-btn').classList.toggle('active', on);
+      bar.style.display = on ? 'flex' : 'none';
+      if (!on) { rect.style.display = 'none'; sel = null; }
+      apply.disabled = true;
+      dims.textContent = 'Draw a rectangle over the photo';
+    };
+
+    area.addEventListener('mousedown', e => {
+      if (!window._cropMode || e.button !== 0) return;
+      if (e.target.closest('#crop-bar')) return;        // let the buttons work
+      drawing = true;
+      const p = areaXY(e); sx = p.x; sy = p.y;
+      rect.style.display = 'block';
+      rect.style.left = sx + 'px'; rect.style.top = sy + 'px';
+      rect.style.width = '0px'; rect.style.height = '0px';
+      apply.disabled = true;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!drawing) return;
+      const p = areaXY(e);
+      const l = Math.min(sx, p.x), t = Math.min(sy, p.y);
+      const w = Math.abs(p.x - sx), h = Math.abs(p.y - sy);
+      sel = { l, t, w, h };
+      rect.style.left = l + 'px'; rect.style.top = t + 'px';
+      rect.style.width = w + 'px'; rect.style.height = h + 'px';
+      const a = window._toNative(l, t), b = window._toNative(l + w, t + h);
+      dims.textContent = `${Math.round(b.x - a.x)} × ${Math.round(b.y - a.y)} px`;
+    });
+    window.addEventListener('mouseup', () => {
+      if (!drawing) return;
+      drawing = false;
+      apply.disabled = !(sel && sel.w > 4 && sel.h > 4);
+    });
+
+    window.applyCrop = async function () {
+      if (!sel || !photos.length) return;
+      const a = window._toNative(sel.l, sel.t);
+      const b = window._toNative(sel.l + sel.w, sel.t + sel.h);
+      const payload = {
+        filename: photos[idx].filename,
+        x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y,
+      };
+      apply.disabled = true;
+      showToast('Cropping…', 0);
+      try {
+        const res = await fetch(`${API}/crop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Crop failed');
+        window.toggleCropMode(false);
+        showToast('Saved ' + data.filename, 1500);
+        await fetchPhotos();                          // reload list (new crop is adjacent)
+        showPhotoByFilename(data.filename);           // jump to it
+      } catch (err) {
+        showToast('Crop failed: ' + err.message, 2500);
+        apply.disabled = false;
+      }
+    };
+  })();
+
+  // ─── PERSPECTIVE CROP (place 4 corners → straighten into a rectangle) ──
+  // Points are kept in native-image pixel coordinates (not screen pixels) so
+  // the quad stays glued to the right spot on the photo across pan/zoom;
+  // _perspRedraw() re-projects them to screen space via window._toScreen
+  // whenever the pan/zoom transform changes (hooked in apply() above).
+  (function () {
+    const area = document.getElementById('photo-area');
+    const svg  = document.getElementById('persp-overlay');
+    const poly = document.getElementById('persp-poly');
+    const handles = Array.from(document.querySelectorAll('.persp-handle'));
+    const bar  = document.getElementById('persp-bar');
+    const hint = document.getElementById('persp-hint');
+    const apply = document.getElementById('persp-apply');
+    let points = [];    // up to 4 native-image {x,y}, unordered (server sorts into TL/TR/BR/BL)
+    let dragIdx = -1;
+
+    function areaXY(e) {
+      const r = area.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    function redraw() {
+      handles.forEach((h, i) => {
+        if (i >= points.length) { h.style.display = 'none'; return; }
+        const s = window._toScreen(points[i].x, points[i].y);
+        h.setAttribute('cx', s.x); h.setAttribute('cy', s.y);
+        h.style.display = 'block';
+      });
+      poly.setAttribute('points', points.length === 4
+        ? points.map(p => { const s = window._toScreen(p.x, p.y); return `${s.x},${s.y}`; }).join(' ')
+        : '');
+    }
+    window._perspRedraw = redraw;
+
+    window.togglePerspectiveMode = function (force) {
+      const on = force === undefined ? !window._perspMode : force;
+      if (on && window._cropMode) window.toggleCropMode(false);
+      if (on && window._frameMode) window.toggleFrameMode(false);
+      window._perspMode = on;
+      area.classList.toggle('persp-mode', on);
+      document.body.classList.toggle('selecting', on);   // uncover the whole photo
+      document.getElementById('persp-btn').classList.toggle('active', on);
+      bar.style.display = on ? 'flex' : 'none';
+      svg.style.display = on ? 'block' : 'none';
+      if (!on) { points = []; dragIdx = -1; }
+      redraw();
+      apply.disabled = true;
+      hint.textContent = 'Click 4 corners of the region to straighten';
+    };
+
+    area.addEventListener('mousedown', e => {
+      if (!window._perspMode || e.button !== 0) return;
+      if (e.target.closest('#persp-bar')) return;          // let the buttons work
+      if (e.target.classList && e.target.classList.contains('persp-handle')) {
+        dragIdx = handles.indexOf(e.target);
+        e.target.classList.add('dragging');
+        e.preventDefault();
+        return;
+      }
+      if (points.length >= 4) return;                      // adjust via dragging instead
+      const p = areaXY(e);
+      points.push(window._toNative(p.x, p.y));
+      redraw();
+      if (points.length === 4) {
+        apply.disabled = false;
+        hint.textContent = 'Drag corners to adjust, then save';
+      } else {
+        hint.textContent = `${4 - points.length} more corner${points.length === 3 ? '' : 's'} to go`;
+      }
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (dragIdx < 0) return;
+      const p = areaXY(e);
+      points[dragIdx] = window._toNative(p.x, p.y);
+      redraw();
+    });
+    window.addEventListener('mouseup', () => {
+      if (dragIdx < 0) return;
+      handles[dragIdx].classList.remove('dragging');
+      dragIdx = -1;
+    });
+
+    window.applyPerspectiveCrop = async function () {
+      if (points.length !== 4 || !photos.length) return;
+      apply.disabled = true;
+      showToast('Straightening…', 0);
+      try {
+        const res = await fetch(`${API}/perspective-crop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: photos[idx].filename,
+            points: points.map(p => [p.x, p.y]),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Perspective crop failed');
+        window.togglePerspectiveMode(false);
+        showToast('Saved ' + data.filename, 1500);
+        await fetchPhotos();                              // reload list (new photo is adjacent)
+        showPhotoByFilename(data.filename);               // jump to it
+      } catch (err) {
+        showToast('Perspective crop failed: ' + err.message, 2500);
+        apply.disabled = false;
+      }
+    };
+  })();
+
+  // ─── FRAME PICKER (pick a Live Photo frame → save adjacent HEIC) ──
+  // Seeking the MOV in a <video> was hopeless: an iPhone Live Photo is HEVC
+  // with 2-4 keyframes in its entire ~2s, and browsers snap a seek to the
+  // nearest one, so the slider could only ever land on a handful of stills.
+  // The server decodes every frame instead, and this scrubs those: one slider
+  // notch = one real frame, preloaded so it flips instantly.
+  (function () {
+    const img     = document.getElementById('main-photo');
+    const preview = document.getElementById('frame-preview');
+    const bar     = document.getElementById('frame-bar');
+    const scrub   = document.getElementById('frame-scrub');
+    const tlabel  = document.getElementById('frame-time');
+    const playBtn = document.getElementById('frame-play');
+    const saveBtn = document.getElementById('frame-save');
+    const stepBtns = () => bar.querySelectorAll('.frame-step');
+
+    let frameCount = 0, fps = 30, frameIdx = 0, playTimer = null;
+    let frameFile = '';        // photo whose frames are loaded
+    let loadToken = 0;         // cancels a slower extraction when photos change
+    const preloaded = [];      // Image objects, kept so the browser holds them in cache
+
+    const frameUrl = (i) => `${API}/frame-image/${i}/${encodeURIComponent(frameFile)}`;
+
+    function setBusy(busy) {
+      scrub.disabled = busy;
+      playBtn.disabled = busy;
+      saveBtn.disabled = busy;
+      stepBtns().forEach(b => { b.disabled = busy; });
+    }
+
+    function showFrame(i) {
+      if (!frameCount) return;
+      frameIdx = Math.max(0, Math.min(i, frameCount - 1));
+      scrub.value = frameIdx;
+      preview.src = frameUrl(frameIdx);
+      tlabel.textContent = `${frameIdx + 1}/${frameCount} · ${(frameIdx / fps).toFixed(2)}s`;
+    }
+
+    function stopPlayback() {
+      if (playTimer) { clearInterval(playTimer); playTimer = null; }
+      playBtn.innerHTML = '&#9654;';
+    }
+
+    window.toggleFrameMode = function (force) {
+      const on = force === undefined ? !window._frameMode : force;
+      if (on && !(photos[idx] && photos[idx].has_mov)) return;   // no sidecar video
+      window._frameMode = on;
+      document.getElementById('frame-btn').classList.toggle('active', on);
+      bar.style.display = on ? 'flex' : 'none';
+      preview.style.display = on ? 'block' : 'none';
+      stopPlayback();
+      if (on) {
+        if (window._cropMode) window.toggleCropMode(false);
+        if (window._perspMode) window.togglePerspectiveMode(false);
+        img.classList.remove('visible');                         // hide still behind the frames
+        loadFrames(photos[idx].filename);
+      } else {
+        loadToken++;                                             // abandon any in-flight extraction
+        setBusy(false);                                          // don't leave the controls disabled
+        preview.removeAttribute('src');
+        preloaded.length = 0;
+        frameCount = 0;
+        img.classList.add('visible');                            // restore the still
+      }
+    };
+
+    // Asks the server to decode the sidecar video (~1s the first time for a
+    // Live Photo, then cached), then preloads every frame so dragging the
+    // slider never waits on the network.
+    async function loadFrames(filename) {
+      const token = ++loadToken;
+      frameFile = filename;
+      frameCount = 0;
+      frameIdx = 0;
+      setBusy(true);
+      tlabel.textContent = 'Extracting…';
+      let data;
+      try {
+        const res = await fetch(`${API}/frames/${encodeURIComponent(filename)}`);
+        data = await res.json();
+      } catch (e) {
+        data = { error: 'network/server error' };
+      }
+      if (token !== loadToken) return;                           // photo changed meanwhile
+      if (!data.ok) {
+        tlabel.textContent = 'Unavailable';
+        showToast(data.error || 'Could not read the Live Photo video', 3500, true);
+        window.toggleFrameMode(false);
+        return;
+      }
+      frameCount = data.count;
+      fps = data.fps || 30;
+      scrub.max = frameCount - 1;
+      setBusy(false);
+      showFrame(0);
+      preloaded.length = 0;
+      for (let i = 0; i < frameCount; i++) {
+        const im = new Image();
+        im.src = frameUrl(i);
+        preloaded.push(im);
+      }
+    }
+
+    window.frameStep = function (delta) {
+      if (!frameCount) return;
+      stopPlayback();
+      showFrame(frameIdx + delta);
+    };
+
+    window.frameTogglePlay = function () {
+      if (!frameCount) return;
+      if (playTimer) { stopPlayback(); return; }
+      if (frameIdx >= frameCount - 1) showFrame(0);              // replay from the start
+      playBtn.innerHTML = '&#10073;&#10073;';
+      playTimer = setInterval(() => {
+        if (frameIdx >= frameCount - 1) { stopPlayback(); return; }
+        showFrame(frameIdx + 1);
+      }, 1000 / fps);
+    };
+
+    scrub.addEventListener('input', () => {
+      stopPlayback();
+      showFrame(parseInt(scrub.value, 10));
+    });
+
+    // Saving sends the frame index, not pixels: the server re-decodes that
+    // exact frame at the video's full resolution.
+    window.saveFrame = async function () {
+      if (!window._frameMode || !frameCount) return;
+      stopPlayback();
+      const filename = frameFile, index = frameIdx;
+      showToast('Saving frame…', 0);
+      try {
+        const res = await fetch(`${API}/frame`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, index })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Frame save failed');
+        window.toggleFrameMode(false);
+        showToast('Saved ' + data.filename, 1500);
+        await fetchPhotos();
+        showPhotoByFilename(data.filename);
+      } catch (err) {
+        showToast('Frame save failed: ' + err.message, 2500, true);
+      }
+    };
+  })();
+
+  // ─── PHOTO DISPLAY ────────────────────────────────────────────
+  function showPhoto(i) {
+    if (!photos.length) return;
+    if (window._cropMode) window.toggleCropMode(false);   // don't carry a rectangle across photos
+    if (window._perspMode) window.togglePerspectiveMode(false); // don't carry corners across photos
+    if (window._frameMode) window.toggleFrameMode(false); // don't carry the video scrubber across photos
+    idx = Math.max(0, Math.min(i, photos.length - 1));
+    const photo = photos[idx];
+    const imgEl = document.getElementById('main-photo');
+    const vidEl = document.getElementById('main-video');
+    const isVideo = isVideoItem(photo);
+    imgEl.classList.remove('visible');          // hide while new image decodes
+    imgEl.style.display = isVideo ? 'none' : '';
+    // Never leave a clip playing behind the next item.
+    vidEl.pause();
+    vidEl.style.display = isVideo ? 'block' : 'none';
+    // Tools that only make sense on a still.
+    ['copy-btn', 'crop-btn', 'persp-btn'].forEach(id => {
+      document.getElementById(id).style.display = isVideo ? 'none' : '';
+    });
+
+    if (isVideo) {
+      vidEl.poster = `${API}/poster/${encodeURIComponent(photo.filename)}`;
+      vidEl.src = `${API}/display/${encodeURIComponent(photo.filename)}`;
+      vidEl.load();
+    } else {
+      if (vidEl.hasAttribute('src')) {         // drop the previous clip's buffer
+        vidEl.removeAttribute('src');
+        vidEl.removeAttribute('poster');
+        vidEl.load();
+      }
+
+      // DIAGNOSTIC — remove once we have real numbers. Logs whether this photo
+      // was actually pre-decoded and how long it took to become paintable.
+      window._navStart = performance.now();
+      window._navWasPrecached = preloadCache.has(photo.filename);
+      window._navFilename = photo.filename;
+
+      imgEl.src = `${API}/display/${encodeURIComponent(photo.filename)}`;  // full-res JPEG, fast decode
+    }
+    document.getElementById('counter').textContent = `${idx + 1} / ${photos.length}`;
+    document.getElementById('goto-input').max = photos.length;
+    document.getElementById('filename-label').textContent = photo.filename;
+    document.getElementById('date-label').textContent = photo.date || '';
+    document.getElementById('frame-btn').style.display = photo.has_mov ? '' : 'none';
+    const gpsLink    = document.getElementById('gps-link');
+    const geocodeBtn = document.getElementById('geocode-btn');
+    document.getElementById('place-label').textContent = '';
+    geocodeBtn.textContent = 'Find place';
+    if (photo.gmaps_url && photo.lat != null) {
+      gpsLink.href = photo.gmaps_url;
+      document.getElementById('gps-coords').textContent = `${photo.lat.toFixed(4)}, ${photo.lon.toFixed(4)}`;
+      gpsLink.classList.remove('hidden');
+      geocodeBtn.classList.remove('hidden');
+    } else {
+      gpsLink.classList.add('hidden');
+      geocodeBtn.classList.add('hidden');
+    }
+    renderTags(photo.tags);
+    document.getElementById('note-input').value = photo.note || '';
+    updateNavButtons();
+    preloadAdjacent(idx);
+  }
+
+  function onPhotoLoaded() {
+    // DIAGNOSTIC — remove once we have real numbers.
+    const elapsed = (performance.now() - window._navStart).toFixed(0);
+    console.log(`%c[nav] ${window._navFilename}: ${elapsed}ms to onload (precached=${window._navWasPrecached})`,
+      'color: #4FC3F7; font-weight: bold;');
+    if (window._zoomReset) window._zoomReset(); // fit + show with fade-in
+  }
+
+  function navigate(delta) { showPhoto(idx + delta); }
+  function updateNavButtons() {
+    document.getElementById('prev-btn').disabled = idx === 0;
+    document.getElementById('next-btn').disabled = idx === photos.length - 1;
+  }
+
+  // ─── GO TO # ──────────────────────────────────────────────────
+  // Jumps within the currently visible list (respects the "Tagged only" filter,
+  // same as every other nav action) — #1 is the first photo shown, not idx 0.
+  function gotoPhoto() {
+    const input = document.getElementById('goto-input');
+    const n = parseInt(input.value, 10);
+    input.value = '';
+    input.blur();
+    if (!photos.length || isNaN(n)) return;
+    showPhoto(Math.max(1, Math.min(n, photos.length)) - 1);
+  }
+
+  // Fetching a photo over localhost is ~10ms — decoding it is the real cost
+  // (300-900ms for a 24MP HEIC). The old preloader stuffed <img> tags into a
+  // display:none div, which warms the HTTP cache but lets the browser skip
+  // the actual decode until the image is painted, so it never helped. This
+  // keeps a small forward/backward window of Image objects with .decode()
+  // explicitly forced, so navigating into an already-decoded photo is instant.
+  const PRELOAD_WINDOW = [1, 2, 3, 4, -1];  // priority order: next photos first
+  const preloadCache = new Map(); // filename -> Image
+
+  function preloadAdjacent(i) {
+    const wanted = new Set();
+    PRELOAD_WINDOW.forEach(offset => {
+      const j = i + offset;
+      // Clips are streamed on demand — prefetching them would pull tens of MB.
+      if (j >= 0 && j < photos.length && !isVideoItem(photos[j])) wanted.add(photos[j].filename);
+    });
+
+    for (const filename of [...preloadCache.keys()]) {
+      if (!wanted.has(filename)) preloadCache.delete(filename);
+    }
+
+    wanted.forEach(filename => {
+      if (preloadCache.has(filename)) return;
+      const img = new Image();
+      img.src = `${API}/display/${encodeURIComponent(filename)}`;  // preload the fast JPEG view
+      preloadCache.set(filename, img);
+      // DIAGNOSTIC — remove once we have real numbers. Previously this caught
+      // and silently discarded every error, so a systematic decode() failure
+      // would have been invisible.
+      const t0 = performance.now();
+      img.decode().then(() => {
+        console.log(`%c[preload] decoded ${filename} in ${(performance.now() - t0).toFixed(0)}ms`, 'color: #81c784;');
+      }).catch(err => {
+        console.warn(`[preload] decode() FAILED for ${filename}:`, err);
+      });
+    });
+  }
+
+  // ─── TAGS ─────────────────────────────────────────────────────
+  function renderTags(tags) {
+    const t = tags || { me: false, blog: false, hidden: false };
+    document.getElementById('btn-me').className     = 'tag-btn' + (t.me     ? ' active-me'     : '');
+    document.getElementById('btn-blog').className   = 'tag-btn' + (t.blog   ? ' active-blog'   : '');
+    document.getElementById('btn-hidden').className = 'tag-btn' + (t.hidden ? ' active-hidden' : '');
+  }
+
+  // Tag/note saves used to be fire-and-forget — if the server-side folder state
+  // ever desyncs from what this tab has loaded (e.g. the server restarted),
+  // every save 500s silently and the tab just keeps going as if nothing's wrong.
+  // This surfaces that loudly instead, since silently losing tagging work is
+  // much worse than an occasional alert.
+  function reportIfSaveFailed(fetchPromise, what) {
+    fetchPromise
+      .then(r => { if (!r.ok) alert(`Failed to save ${what} — is the folder still open? Try reopening it.`); })
+      .catch(() => alert(`Failed to save ${what} — network/server error. Your change was NOT saved.`));
+  }
+
+  function toggleTag(category) {
+    if (!photos.length) return;
+    const photo = photos[idx];
+    if (!photo.tags) photo.tags = { me: false, blog: false, hidden: false };
+    photo.tags[category] = !photo.tags[category];
+    renderTags(photo.tags);
+    updateStats();
+    reportIfSaveFailed(fetch(`${API}/star`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: photo.filename, category, value: photo.tags[category] })
+    }), 'tag');
+    if (taggedOnly && !isTagged(photo)) {
+      // No longer matches the tagged-only filter — drop it from the current view.
+      photos.splice(idx, 1);
+      if (!photos.length) {
+        document.getElementById('main-photo').classList.remove('visible');
+        document.getElementById('empty-state').style.display = 'flex';
+        document.getElementById('empty-state').innerHTML = '<h2>No tagged photos yet</h2><p>Tag some photos, or turn off "Tagged only".</p>';
+        document.getElementById('counter').textContent = '';
+        return;
+      }
+      idx = Math.min(idx, photos.length - 1);
+      showPhoto(idx);
+    }
+  }
+
+  // ─── NOTES ────────────────────────────────────────────────────
+  function saveNote() {
+    if (!photos.length) return;
+    const photo = photos[idx];
+    const note = document.getElementById('note-input').value;
+    if (photo.note === note) return;
+    photo.note = note;
+    updateNotesBadge();
+    reportIfSaveFailed(fetch(`${API}/note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: photo.filename, note })
+    }), 'note');
+  }
+
+  function uniqueNotes() {
+    const map = new Map(); // note text -> { count, firstFilename }
+    allPhotos.forEach(p => {
+      const note = (p.note || '').trim();
+      if (!note) return;
+      if (!map.has(note)) map.set(note, { count: 0, firstFilename: p.filename });
+      map.get(note).count++;
+    });
+    return map;
+  }
+
+  function updateNotesBadge() {
+    document.getElementById('notes-count-badge').textContent = uniqueNotes().size;
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function openNotes() {
+    const map = uniqueNotes();
+    const list = document.getElementById('notes-list');
+    list.innerHTML = '';
+    if (map.size === 0) {
+      list.innerHTML = '<div id="notes-empty">No notes yet — type in the note field while tagging a photo.</div>';
+    } else {
+      map.forEach((info, note) => {
+        const row = document.createElement('div');
+        row.className = 'notes-item';
+        row.innerHTML = `
+          <span class="notes-text">${escapeHtml(note)}</span>
+          <span class="notes-badge">${info.count > 1 ? '×' + info.count : ''}</span>
+        `;
+        row.addEventListener('click', () => { closeNotes(); showPhotoByFilename(info.firstFilename); });
+        list.appendChild(row);
+      });
+    }
+    document.getElementById('notes-backdrop').classList.add('open');
+  }
+
+  function closeNotes() {
+    document.getElementById('notes-backdrop').classList.remove('open');
+  }
+
+  // ─── REVERSE GEOCODE ──────────────────────────────────────────
+  async function findPlace() {
+    if (!photos.length) return;
+    const { lat, lon } = photos[idx];
+    if (lat == null) return;
+    const btn   = document.getElementById('geocode-btn');
+    const label = document.getElementById('place-label');
+    btn.textContent = 'Searching…';
+    btn.disabled = true;
+    label.textContent = '';
+    try {
+      const res  = await fetch(`${API}/geocode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lon }),
+      });
+      const data = await res.json();
+      const parts = [];
+      if (data.landmark) parts.push(data.landmark);
+      if (data.place)    parts.push(data.place);
+      label.textContent = parts.join(' · ') || 'No results found';
+    } catch {
+      label.textContent = 'Network error';
+    } finally {
+      btn.textContent = 'Find place';
+      btn.disabled = false;
+    }
+  }
+
+  // ─── DELETE ───────────────────────────────────────────────────
+  async function deletePhoto() {
+    if (!photos.length) return;
+    const photo = photos[idx];
+    const btn = document.getElementById('delete-btn');
+    btn.disabled = true;
+    const res = await fetch(`${API}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: photo.filename })
+    });
+    const data = await res.json();
+    btn.disabled = false;
+    if (!data.ok) { alert(data.error || 'Delete failed'); return; }
+    dropPhotoFromView(photo.filename);
+  }
+
+  // A photo that left this folder — trashed or moved elsewhere — drops out of
+  // both lists, and the view lands on whatever took its place.
+  function dropPhotoFromView(filename) {
+    const ai = allPhotos.findIndex(p => p.filename === filename);
+    if (ai !== -1) allPhotos.splice(ai, 1);
+    const j = photos.findIndex(p => p.filename === filename);
+    if (j !== -1) photos.splice(j, 1);
+    updateStats();
+    updateNotesBadge();
+    if (!photos.length) {
+      document.getElementById('main-photo').classList.remove('visible');
+      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('empty-state').innerHTML = taggedOnly
+        ? '<h2>No tagged photos yet</h2><p>Tag some photos, or turn off "Tagged only".</p>'
+        : '<h2>No photos left</h2><p>All photos have been removed.</p>';
+      document.getElementById('counter').textContent = '';
+      return;
+    }
+    idx = Math.min(j === -1 ? idx : j, photos.length - 1);
+    showPhoto(idx);
+  }
+
+  // ─── ROTATE (save a rotated copy, like Crop) ──────────────────
+  async function rotatePhoto(degrees) {
+    if (!photos.length || currentIsVideo()) return;
+    const filename = photos[idx].filename;
+    showToast(`Rotating ${degrees}\u00B0\u2026`, 0);
+    try {
+      const res = await fetch(`${API}/rotate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, degrees })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Rotate failed');
+      showToast('Saved ' + data.filename, 1500);
+      await fetchPhotos();                    // the rotated copy is adjacent
+      showPhotoByFilename(data.filename);     // jump to it
+    } catch (err) {
+      showToast('Rotate failed: ' + err.message, 2500, true);
+    }
+  }
+
+  // ─── COPY TO CLIPBOARD ────────────────────────────────────────
+  // Server-side copy: the backend converts the HEIC to PNG and puts it on the
+  // macOS clipboard via osascript, so this works regardless of browser
+  // clipboard permissions or HEIC support.
+  let toastTimer = null;
+  function showToast(msg, ms = 2000, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.toggle('error', isError);
+    t.classList.add('visible');
+    clearTimeout(toastTimer);
+    if (ms) toastTimer = setTimeout(() => t.classList.remove('visible'), ms);
+  }
+
+  async function copyPhoto() {
+    if (!photos.length) return;
+    if (currentIsVideo()) { showToast('Copy as PNG only works on photos', 2000, true); return; }
+    const photo = photos[idx];
+    const btn = document.getElementById('copy-btn');
+    btn.disabled = true;
+    showToast('Copying…', 0);  // first copy of a photo converts to PNG, can take a few seconds
+    try {
+      const res = await fetch(`${API}/copy-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: photo.filename })
+      });
+      const data = await res.json();
+      if (data.ok) showToast(`Copied ${photo.filename} to clipboard as PNG`);
+      else showToast(data.error || 'Copy failed', 4000, true);
+    } catch {
+      showToast('Copy failed — network/server error', 4000, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  const ctxMenu = document.getElementById('ctx-menu');
+  document.getElementById('photo-area').addEventListener('contextmenu', e => {
+    if (!photos.length) return;
+    e.preventDefault();
+    document.querySelectorAll('.ctx-photo-only').forEach(el => {
+      el.style.display = currentIsVideo() ? 'none' : '';
+    });
+    ctxMenu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
+    ctxMenu.style.top  = Math.min(e.clientY, window.innerHeight - 44) + 'px';
+    ctxMenu.classList.add('open');
+  });
+  // Any click (including on a menu item, which bubbles here after firing) closes it.
+  document.addEventListener('click', () => ctxMenu.classList.remove('open'));
+
+  // ─── KEYBOARD ─────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('browser-backdrop').classList.contains('open')) {
+      if (e.key === 'Escape') closeBrowser();
+      return;
+    }
+    if (document.getElementById('notes-backdrop').classList.contains('open')) {
+      if (e.key === 'Escape') closeNotes();
+      return;
+    }
+    if (document.activeElement === document.getElementById('folder-input')) {
+      if (e.key === 'Enter') loadFolder();
+      if (e.key === 'Escape') document.getElementById('folder-input').blur();
+      return;
+    }
+    if (document.activeElement === document.getElementById('note-input')) {
+      if (e.key === 'Enter' || e.key === 'Escape') document.getElementById('note-input').blur();
+      return;
+    }
+    if (document.activeElement === document.getElementById('goto-input')) {
+      if (e.key === 'Enter') gotoPhoto();
+      if (e.key === 'Escape') { document.getElementById('goto-input').value = ''; document.getElementById('goto-input').blur(); }
+      return;
+    }
+    if (window._frameMode) {
+      // Arrows walk frame by frame, Shift+arrow jumps 10 at a time.
+      if (e.key === 'Escape')     { toggleFrameMode(false); return; }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); frameStep(e.shiftKey ? -10 : -1); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); frameStep(e.shiftKey ?  10 :  1); return; }
+      if (e.key === 'Home')       { e.preventDefault(); frameStep(-1e6); return; }
+      if (e.key === 'End')        { e.preventDefault(); frameStep(1e6); return; }
+      if (e.key === ' ')          { e.preventDefault(); frameTogglePlay(); return; }
+      if (e.key === 'Enter')      { e.preventDefault(); saveFrame(); return; }
+      return;                                             // swallow tag/delete shortcuts while scrubbing
+    }
+    // The player swallows arrows once its controls take focus; hand them back
+    // so left/right always move between photos.
+    const vidEl = document.getElementById('main-video');
+    if (document.activeElement === vidEl || vidEl.contains(document.activeElement)) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') vidEl.blur();
+    }
+    switch (e.key) {
+      case 'ArrowLeft':  e.preventDefault(); navigate(-1); break;
+      case 'ArrowRight': e.preventDefault(); navigate(1);  break;
+      case ' ':
+        if (currentIsVideo()) {
+          e.preventDefault();
+          if (vidEl.paused) vidEl.play(); else vidEl.pause();
+        }
+        break;
+      case '1': toggleTag('me');     break;
+      case '2': toggleTag('blog');   break;
+      case '3': toggleTag('hidden'); break;
+      case 'c': case 'C': copyPhoto(); break;
+      case 'x': case 'X': if (!currentIsVideo()) toggleCropMode(); break;
+      case 'p': case 'P': if (!currentIsVideo()) togglePerspectiveMode(); break;
+      case 'v': case 'V': toggleFrameMode(); break;
+      case 'm': case 'M': openMoveBrowser(); break;
+      case 'Escape':
+        ctxMenu.classList.remove('open');
+        if (window._cropMode) toggleCropMode(false);
+        if (window._perspMode) togglePerspectiveMode(false);
+        if (window._frameMode) toggleFrameMode(false);
+        break;
+      case 'Backspace': case 'Delete': e.preventDefault(); deletePhoto(); break;
+    }
+  });
+
+  document.getElementById('folder-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadFolder();
+  });
+
+  document.getElementById('browser-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('browser-backdrop')) closeBrowser();
+  });
+
+  document.getElementById('notes-backdrop').addEventListener('click', e => {
+    if (e.target === document.getElementById('notes-backdrop')) closeNotes();
+  });
+
+  document.getElementById('note-input').addEventListener('blur', saveNote);
+
+  init();
+</script>
+</body>
+</html>
